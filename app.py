@@ -140,3 +140,54 @@ if st.button("查詢股價"):
                 "技術指標僅供研究參考，不構成投資建議。"
                 "短期資料可能不足，指標也不保證預測未來走勢。"
             )
+
+            # 技術面自動分析報告
+            st.subheader("📋 技術面自動分析報告")
+
+            latest_close = close.iloc[-1]
+            latest_ma20 = chart_data["MA20"].iloc[-1]
+            latest_ma60 = chart_data["MA60"].iloc[-1]
+
+            if pd.notna(latest_ma20) and pd.notna(latest_ma60):
+                if latest_close > latest_ma20 and latest_close > latest_ma60:
+                    st.write("【均線】股價位於20日與60日均線之上，價格結構相對偏強。")
+                elif latest_close < latest_ma20 and latest_close < latest_ma60:
+                    st.write("【均線】股價位於20日與60日均線之下，價格結構相對偏弱。")
+                else:
+                    st.write("【均線】股價介於20日與60日均線之間，訊號分歧。")
+            else:
+                st.write("【均線】歷史資料不足，暫不判斷。")
+
+            if pd.notna(latest_rsi):
+                if latest_rsi >= 70:
+                    st.write("【RSI】動能偏強，但需留意過熱風險。")
+                elif latest_rsi <= 30:
+                    st.write("【RSI】動能偏弱，可能出現超賣狀態。")
+                else:
+                    st.write("【RSI】位於30至70之間，未達常用超買或超賣門檻。")
+            else:
+                st.write("【RSI】資料不足，暫不判斷。")
+
+            if dif.iloc[-1] > dea.iloc[-1]:
+                st.write("【MACD】DIF高於訊號線，動能相對偏多。")
+            elif dif.iloc[-1] < dea.iloc[-1]:
+                st.write("【MACD】DIF低於訊號線，動能相對偏空。")
+            else:
+                st.write("【MACD】DIF與訊號線接近重合。")
+
+            volume = data["Volume"]
+            avg_volume20 = volume.rolling(20).mean().iloc[-1]
+
+            if pd.notna(avg_volume20) and avg_volume20 > 0:
+                volume_ratio = volume.iloc[-1] / avg_volume20
+                st.write(f"【成交量】最新成交量為20日均量的 {volume_ratio:.2f} 倍。")
+                if volume_ratio >= 1.5:
+                    st.write("成交量明顯放大，需配合股價方向判斷。")
+                elif volume_ratio < 0.7:
+                    st.write("成交量相對萎縮，市場交易活躍度較低。")
+                else:
+                    st.write("成交量接近近期平均水準。")
+            else:
+                st.write("【成交量】資料不足，暫不判斷。")
+
+            st.info("以上為規則式技術分析，並非AI預測或買賣建議。")
