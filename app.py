@@ -206,3 +206,76 @@ if st.button("查詢股價"):
                 st.write("【成交量】資料不足，暫不判斷。")
 
             st.info("以上為規則式技術分析，並非AI預測或買賣建議。")
+
+            # 持股與空手雙模式分析
+            st.subheader("📊 V3 雙模式技術決策")
+
+            ma20 = chart_data["MA20"].iloc[-1]
+            ma60 = chart_data["MA60"].iloc[-1]
+            macd_bullish = dif.iloc[-1] > dea.iloc[-1]
+
+            trend_ready = pd.notna(ma20) and pd.notna(ma60)
+
+            if mode == "持股模式":
+                st.write("### 持股者分析")
+
+                if holding_cost > 0:
+                    return_pct = (
+                        (latest_close - holding_cost)
+                        / holding_cost * 100
+                    )
+                    st.metric(
+                        "未實現報酬率（未扣交易成本）",
+                        f"{return_pct:+.2f}%"
+                    )
+                else:
+                    st.warning("尚未輸入持股成本，無法計算報酬率。")
+
+                if not trend_ready:
+                    st.write("均線資料不足，暫不判斷持股趨勢。")
+                elif latest_close < ma20 and not macd_bullish:
+                    st.warning(
+                        "股價低於20日均線且MACD偏弱，"
+                        "應留意持股風險，評估減碼或出場條件。"
+                    )
+                elif latest_close > ma20 and macd_bullish:
+                    st.success(
+                        "股價站上20日均線且MACD偏強，"
+                        "可持續觀察趨勢是否延續。"
+                    )
+                else:
+                    st.info(
+                        "技術訊號分歧，建議觀察均線與MACD變化，"
+                        "避免只依單一指標決策。"
+                    )
+
+            else:
+                st.write("### 空手者分析")
+
+                if not trend_ready or pd.isna(latest_rsi):
+                    st.write("技術資料不足，暫不判斷進場條件。")
+                elif (
+                    latest_close > ma20
+                    and latest_close > ma60
+                    and macd_bullish
+                    and 30 < latest_rsi < 70
+                ):
+                    st.success(
+                        "均線、MACD與RSI條件相對配合，"
+                        "可列入觀察名單，但仍須規劃進場價與停損。"
+                    )
+                elif latest_close < ma20 and not macd_bullish:
+                    st.warning(
+                        "股價低於20日均線且MACD偏弱，"
+                        "目前宜等待更明確的轉強訊號。"
+                    )
+                else:
+                    st.info(
+                        "技術訊號尚未一致，"
+                        "可等待均線與動能進一步確認。"
+                    )
+
+            st.caption(
+                "此為規則式技術分析，尚未整合基本面8題。"
+                "不構成個人化投資建議。"
+            )
