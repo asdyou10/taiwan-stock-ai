@@ -248,6 +248,10 @@ if st.button("查詢股價"):
                         sell_tax = market_value * tax_rate
 
                         net_profit = profit_loss - buy_fee - sell_fee - sell_tax
+                        breakeven_price = (
+                        holding_cost * (1 + fee_rate)
+                        / (1 - fee_rate - tax_rate)
+                        )
                         st.metric("持股總成本", f"{total_cost:,.0f} 元")
                         st.metric("目前持股市值", f"{market_value:,.0f} 元")
                         st.metric("未實現損益（未扣交易成本）", f"{profit_loss:+,.0f} 元")
