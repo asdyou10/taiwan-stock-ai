@@ -291,12 +291,39 @@ if st.button("查詢股價"):
                 step=1
             )
 
-            reference_price = latest_close
+             reference_price = latest_close
             stop_price = reference_price * (1 - risk_pct / 100)
 
-            st.metric(
-                "參考停損價",
+            # 台股一般股票最小升降單位
+            if stop_price < 10:
+                tick = 0.01
+            elif stop_price < 50:
+                tick = 0.05
+            elif stop_price < 100:
+                tick = 0.1
+            elif stop_price < 500:
+                tick = 0.5
+            elif stop_price < 1000:
+                tick = 1
+            else:
+                tick = 5
+
+            from decimal import Decimal, ROUND_FLOOR
+
+            adjusted_stop = float(
+                (Decimal(str(stop_price)) / Decimal(str(tick)))
+                .to_integral_value(rounding=ROUND_FLOOR)
+                * Decimal(str(tick))
+            )
+            
+             st.metric(
+                "理論停損價",
                 f"{stop_price:.2f} 元"
+            )
+
+            st.metric(
+                "符合台股報價級距的參考價",
+                f"{adjusted_stop:.2f} 元"
             )
 
             st.caption(
