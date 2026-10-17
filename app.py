@@ -20,8 +20,15 @@ if mode == "持股模式":
         value=0.0,
         step=1.0
     )
+    holding_shares = st.number_input(
+        "請輸入持有股數（股）",
+        min_value=0,
+        value=0,
+        step=100
+    )
 else:
     holding_cost = None
+    holding_shares = 0
 stock = st.text_input("請輸入股票代號", "3491")
 period = st.selectbox(
     "查詢期間", ["1mo", "3mo", "6mo", "1y", "2y"], index=3
