@@ -291,7 +291,7 @@ if st.button("查詢股價"):
                 step=1
             )
 
-             reference_price = latest_close
+            reference_price = latest_close
             stop_price = reference_price * (1 - risk_pct / 100)
 
             # 台股一般股票最小升降單位
