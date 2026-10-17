@@ -280,7 +280,7 @@ if st.button("查詢股價"):
                 "不構成個人化投資建議。"
             )
 
-    # V3 風險控管
+           # V3 風險控管
             st.subheader("🛡️ V3 風險控管")
 
             risk_pct = st.slider(
