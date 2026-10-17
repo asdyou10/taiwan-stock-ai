@@ -235,6 +235,14 @@ if st.button("查詢股價"):
                         "未實現報酬率（未扣交易成本）",
                         f"{return_pct:+.2f}%"
                     )
+                    if holding_shares > 0:
+                        total_cost = holding_cost * holding_shares
+                        market_value = latest_close * holding_shares
+                        profit_loss = market_value - total_cost
+
+                        st.metric("持股總成本", f"{total_cost:,.0f} 元")
+                        st.metric("目前持股市值", f"{market_value:,.0f} 元")
+                        st.metric("未實現損益（未扣交易成本）", f"{profit_loss:+,.0f} 元")
                 else:
                     st.warning("尚未輸入持股成本，無法計算報酬率。")
 
