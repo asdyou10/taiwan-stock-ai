@@ -239,10 +239,22 @@ if st.button("查詢股價"):
                         total_cost = holding_cost * holding_shares
                         market_value = latest_close * holding_shares
                         profit_loss = market_value - total_cost
+                        # 台股一般現股交易成本（未計券商折扣）
+                        fee_rate = 0.001425
+                        tax_rate = 0.003
 
+                        buy_fee = total_cost * fee_rate
+                        sell_fee = market_value * fee_rate
+                        sell_tax = market_value * tax_rate
+
+                        net_profit = profit_loss - buy_fee - sell_fee - sell_tax
                         st.metric("持股總成本", f"{total_cost:,.0f} 元")
                         st.metric("目前持股市值", f"{market_value:,.0f} 元")
                         st.metric("未實現損益（未扣交易成本）", f"{profit_loss:+,.0f} 元")
+                        st.metric(
+                        "預估淨損益（扣除交易成本）",
+                        f"{net_profit:+,.0f} 元"
+                        )
                 else:
                     st.warning("尚未輸入持股成本，無法計算報酬率。")
 
