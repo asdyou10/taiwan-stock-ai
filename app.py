@@ -6,7 +6,22 @@ st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
 st.write("第三版：股價、均線、RSI、MACD與成交量分析")
+st.subheader("交易分析模式")
+mode = st.radio(
+    "請選擇目前的持股狀態",
+    ["持股模式", "空手模式"],
+    horizontal=True
+)
 
+if mode == "持股模式":
+    holding_cost = st.number_input(
+        "請輸入每股持有成本（元）",
+        min_value=0.0,
+        value=0.0,
+        step=1.0
+    )
+else:
+    holding_cost = None
 stock = st.text_input("請輸入股票代號", "3491")
 period = st.selectbox(
     "查詢期間", ["1mo", "3mo", "6mo", "1y", "2y"], index=3
