@@ -252,6 +252,25 @@ if st.button("查詢股價"):
                         holding_cost * (1 + fee_rate)
                         / (1 - fee_rate - tax_rate)
                         )
+                        if breakeven_price < 10:
+                            be_tick = 0.01
+                        elif breakeven_price < 50:
+                            be_tick = 0.05
+                        elif breakeven_price < 100:
+                            be_tick = 0.1
+                        elif breakeven_price < 500:
+                            be_tick = 0.5
+                        elif breakeven_price < 1000:
+                            be_tick = 1
+                        else:
+                            be_tick = 5
+                        from decimal import Decimal, ROUND_CEILING
+
+                        adjusted_breakeven = float(
+                            (Decimal(str(breakeven_price)) / Decimal(str(be_tick)))
+                            .to_integral_value(rounding=ROUND_CEILING)
+                            * Decimal(str(be_tick))
+                        )
                         st.metric("持股總成本", f"{total_cost:,.0f} 元")
                         st.metric("目前持股市值", f"{market_value:,.0f} 元")
                         st.metric("未實現損益（未扣交易成本）", f"{profit_loss:+,.0f} 元")
@@ -261,7 +280,7 @@ if st.button("查詢股價"):
                         )
                         st.metric(
                         "損益兩平價（未調整台股報價級距）",
-                        f"{breakeven_price:.2f} 元"
+                        f"{adjusted_breakeven:.2f} 元"
                         )
                 else:
                     st.warning("尚未輸入持股成本，無法計算報酬率。")
