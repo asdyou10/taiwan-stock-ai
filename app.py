@@ -316,7 +316,7 @@ if st.button("查詢股價"):
                 * Decimal(str(tick))
             )
             
-             st.metric(
+            st.metric(
                 "理論停損價",
                 f"{stop_price:.2f} 元"
             )
