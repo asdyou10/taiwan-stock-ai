@@ -259,6 +259,10 @@ if st.button("查詢股價"):
                         "預估淨損益（扣除交易成本）",
                         f"{net_profit:+,.0f} 元"
                         )
+                        st.metric(
+                        "損益兩平價（未調整台股報價級距）",
+                        f"{breakeven_price:.2f} 元"
+                        )
                 else:
                     st.warning("尚未輸入持股成本，無法計算報酬率。")
 
