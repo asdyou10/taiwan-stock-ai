@@ -279,3 +279,28 @@ if st.button("查詢股價"):
                 "此為規則式技術分析，尚未整合基本面8題。"
                 "不構成個人化投資建議。"
             )
+
+    # V3 風險控管
+            st.subheader("🛡️ V3 風險控管")
+
+            risk_pct = st.slider(
+                "可承受的參考跌幅（%）",
+                min_value=1,
+                max_value=20,
+                value=8,
+                step=1
+            )
+
+            reference_price = latest_close
+            stop_price = reference_price * (1 - risk_pct / 100)
+
+            st.metric(
+                "參考停損價",
+                f"{stop_price:.2f} 元"
+            )
+
+            st.caption(
+                f"以最新收盤價 {reference_price:.2f} 元為基準，"
+                f"下跌 {risk_pct}% 計算。"
+                "此為情境試算，非技術支撐位或實際停損建議。"
+            )
