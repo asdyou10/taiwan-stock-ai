@@ -35,6 +35,9 @@ period = st.selectbox(
 )
 
 if st.button("查詢股價"):
+    st.session_state["stock_queried"] = True
+
+if st.session_state.get("stock_queried", False):
     stock = stock.strip()
 
     if not stock.isdigit():
