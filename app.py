@@ -176,7 +176,7 @@ if st.button("查詢股價"):
                 elif latest_close < latest_ma20 and latest_close < latest_ma60:
                     st.write("【均線】股價位於20日與60日均線之下，價格結構相對偏弱。")
                 else:
-                    st.write("【均線】股價介於20日與60日均線之間，訊號分歧。")
+                    st.write("【均線】股價未同時站上或跌破20日與60日均線，短中期訊號尚未一致，需觀察後續走勢。")
             else:
                 st.write("【均線】歷史資料不足，暫不判斷。")
 
