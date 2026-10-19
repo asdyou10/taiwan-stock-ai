@@ -1,7 +1,9 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-
+@st.cache_data(ttl=900, show_spinner=False)
+def get_stock_history(symbol, period):
+    return yf.Ticker(symbol).history(period=period)
 st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
@@ -51,7 +53,7 @@ if st.session_state.get("stock_queried", False):
             for suffix in [".TW", ".TWO"]:
                 symbol = stock + suffix
                 try:
-                    result = yf.Ticker(symbol).history(period=period)
+                    result = get_stock_history(symbol, period)
                     if not result.empty:
                         data = result
                         matched_symbol = symbol
