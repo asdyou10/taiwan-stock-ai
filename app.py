@@ -240,12 +240,12 @@ if st.session_state.get("stock_queried", False):
                 elif strategy == "趨勢續抱型":
                     if latest_close >= ma60:
                         st.info("【趨勢續抱】股價仍在 MA60 之上，長期趨勢尚未出現此項轉弱訊號。")
-                else:
-                    st.warning("【趨勢續抱】股價跌破 MA60，應檢查價格結構及長期趨勢。")
+                    else:
+                        st.warning("【趨勢續抱】股價跌破 MA60，應檢查價格結構及長期趨勢。")
                 else:
                     if latest_close >= ma20:
                     st.info("【穩健保利】股價仍在 MA20 之上，持續觀察短期趨勢。")
-                else:
+                    else:
                     st.warning("【穩健保利】股價跌破 MA20，應提高獲利回吐風險警覺。")
                 
                 if holding_cost > 0:
