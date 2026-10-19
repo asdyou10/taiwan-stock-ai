@@ -85,7 +85,7 @@ if st.button("查詢股價"):
             )
 
             st.subheader("最新均線數值")
-            for days in [5, 10, 20, 60]:
+            for days in [20, 60]:
                 ma = chart_data[f"MA{days}"].iloc[-1]
                 if pd.notna(ma):
                     st.write(f"MA{days}：{ma:.2f} 元")
