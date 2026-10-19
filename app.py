@@ -306,7 +306,7 @@ if st.button("查詢股價"):
             else:
                 st.write("### 空手者分析")
 
-                if not trend_ready or pd.isna(latest_rsi):
+                if not trend_ready:
                     st.write("技術資料不足，暫不判斷進場條件。")
                 elif (
                     latest_close > ma20
