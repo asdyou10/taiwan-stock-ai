@@ -325,8 +325,8 @@ if st.session_state.get("stock_queried", False):
                         "避免只依單一指標決策。"
                     )
 
-            else:
-                st.write("### 空手者分析")
+                else:
+                    st.write("### 空手者分析")
 
                 if not trend_ready:
                     st.write("技術資料不足，暫不判斷進場條件。")
