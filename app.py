@@ -225,7 +225,12 @@ if st.button("查詢股價"):
 
             if mode == "持股模式":
                 st.write("### 持股者分析")
-
+                strategy = st.radio(
+                    "請選擇持股策略",
+                    ["趨勢續抱型", "穩健保利型"],
+                    horizontal=True
+                )
+                
                 if holding_cost > 0:
                     return_pct = (
                         (latest_close - holding_cost)
