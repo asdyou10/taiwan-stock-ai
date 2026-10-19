@@ -311,11 +311,10 @@ if st.button("查詢股價"):
                 elif (
                     latest_close > ma20
                     and latest_close > ma60
-                    and macd_bullish
-                    and 30 < latest_rsi < 70
+                    and macd_bullish                    
                 ):
                     st.success(
-                        "均線、MACD與RSI條件相對配合，"
+                        "股價站上MA20與MA60，且MACD動能偏強。",
                         "可列入觀察名單，但仍須規劃進場價與停損。"
                     )
                 elif latest_close < ma20 and not macd_bullish:
