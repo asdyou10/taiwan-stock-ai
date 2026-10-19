@@ -74,7 +74,7 @@ if st.button("查詢股價"):
                 ).mean()
 
             st.subheader(f"{stock} 股價與均線走勢")
-            st.line_chart(chart_data)
+            st.line_chart(chart_data[["收盤價", "MA20", "MA60"]])
 
             st.metric(
                 "最新一筆收盤價",
