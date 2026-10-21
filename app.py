@@ -350,39 +350,39 @@ if st.session_state.get("stock_queried", False):
                         "可等待均線與動能進一步確認。"
                     )
 
-                    # V3 最終極簡決策（技術面初步版本）
-                    st.subheader("🎯 V3 最終極簡決策")
+            # V3 最終極簡決策（技術面初步版本）
+            st.subheader("🎯 V3 最終極簡決策")
 
-                    if not trend_ready:
-                        st.info("決策：資料不足")
-                        st.write("原因：MA20 或 MA60 資料不足，暫時無法判斷。")
+            if not trend_ready:
+                st.info("決策：資料不足")
+                st.write("原因：MA20 或 MA60 資料不足，暫時無法判斷。")
 
-                    elif mode == "持股模式":
-                        if latest_close < ma20 and not macd_bullish:
-                            st.warning("決策：減碼觀察")
-                            st.write("原因：股價跌破 MA20，且 MACD 動能偏弱。")
-                            st.write("觸發條件：跌破確認的關鍵支撐。")
-                            st.write("失效條件：重新站回 MA20 且 MACD 轉強。")
-                        elif latest_close >= ma60:
-                            st.success("決策：續抱")
-                            st.write("原因：股價仍在 MA60 之上，長期趨勢尚未破壞。")
-                            st.write("觸發條件：維持在 MA60 之上。")
-                            st.write("失效條件：有效跌破 MA60。")
-                        else:
-                            st.info("決策：觀望")
-                            st.write("原因：目前技術訊號不足以支持明確操作。")
+            elif mode == "持股模式":
+                if latest_close < ma20 and not macd_bullish:
+                    st.warning("決策：減碼觀察")
+                    st.write("原因：股價跌破 MA20，且 MACD 動能偏弱。")
+                    st.write("觸發條件：跌破確認的關鍵支撐。")
+                    st.write("失效條件：重新站回 MA20 且 MACD 轉強。")
+                elif latest_close >= ma60:
+                    st.success("決策：續抱")
+                    st.write("原因：股價仍在 MA60 之上，長期趨勢尚未破壞。")
+                    st.write("觸發條件：維持在 MA60 之上。")
+                    st.write("失效條件：有效跌破 MA60。")
+                else:
+                    st.info("決策：觀望")
+                     st.write("原因：目前技術訊號不足以支持明確操作。")
 
-                    else:
-                        if latest_close > ma20 and latest_close > ma60 and macd_bullish:
-                            st.success("決策：買進觀察")
-                            st.write("原因：股價站上 MA20、MA60，且 MACD 動能偏強。")
-                            st.write("觸發條件：確認突破並符合風險報酬條件。")
-                            st.write("失效條件：跌回關鍵均線下方。")
-                        else:
-                           st.info("決策：觀望")
-                           st.write("原因：目前技術條件尚未全部符合。")
+            else:
+                if latest_close > ma20 and latest_close > ma60 and macd_bullish:
+                    st.success("決策：買進觀察")
+                    st.write("原因：股價站上 MA20、MA60，且 MACD 動能偏強。")
+                    st.write("觸發條件：確認突破並符合風險報酬條件。")
+                    st.write("失效條件：跌回關鍵均線下方。")
+                else:
+                    st.info("決策：觀望")
+                    st.write("原因：目前技術條件尚未全部符合。")
 
-                    st.caption("目前僅依技術面判斷，尚未整合基本面、估值與產業分析。")
+            st.caption("目前僅依技術面判斷，尚未整合基本面、估值與產業分析。")
         
             st.caption(
                 "此為規則式技術分析，尚未整合基本面8題。"
