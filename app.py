@@ -68,7 +68,16 @@ if st.session_state.get("stock_queried", False):
                     st.write("\n".join(errors))
         else:
             st.success(f"查詢成功！資料代碼：{matched_symbol}")
-
+            # V3 基本面資料讀取測試
+            with st.expander("📋 V3 基本面資料測試"):
+                try:
+                    info = yf.Ticker(matched_symbol).info
+                    st.write("公司名稱：", info.get("longName", "無資料"))
+                    st.write("產業：", info.get("industry", "無資料"))
+                    st.write("本益比：", info.get("trailingPE", "無資料"))
+                    st.write("市值：", info.get("marketCap", "無資料"))
+                except Exception as e:
+                    st.warning(f"基本面資料讀取失敗：{e}")
             close = data["Close"]
             chart_data = pd.DataFrame({"收盤價": close})
 
