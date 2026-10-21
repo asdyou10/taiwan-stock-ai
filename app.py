@@ -109,7 +109,7 @@ if st.session_state.get("stock_queried", False):
                         # V3 基本面第1題：營收成長（月份驗證版）
                         st.subheader("基本面第1題：營收成長")
 
-                         revenue_df["month_date"] = pd.PeriodIndex(
+                        revenue_df["month_date"] = pd.PeriodIndex(
                             year=revenue_df["revenue_year"].astype(int),
                             month=revenue_df["revenue_month"].astype(int),
                             freq="M"
