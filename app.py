@@ -78,6 +78,39 @@ if st.session_state.get("stock_queried", False):
                     st.write("市值：", info.get("marketCap", "無資料"))
                 except Exception as e:
                     st.warning(f"基本面資料讀取失敗：{e}")
+            
+            # V3 FinMind 月營收測試
+            with st.expander("📊 V3 FinMind 月營收測試"):
+                try:
+                    import requests
+
+                    response = requests.get(
+                        "https://api.finmindtrade.com/api/v4/data",
+                        params={
+                            "dataset": "TaiwanStockMonthRevenue",
+                            "data_id": stock,
+                            "start_date": "2025-01-01",
+                        },
+                        timeout=15,
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+
+                    if result.get("status") != 200:
+                        st.warning(
+                            f"FinMind 回傳訊息：{result.get('msg', result)}"
+                        )
+                    elif result.get("data"):
+                        revenue_df = pd.DataFrame(result["data"])
+                        revenue_df = revenue_df.sort_values(
+                            ["revenue_year", "revenue_month"]
+                        )
+                        st.dataframe(revenue_df.tail(12))
+                    else:
+                        st.warning("目前沒有取得月營收資料。")
+
+                except Exception as e:
+                    st.warning(f"FinMind 查詢失敗：{e}")        
             close = data["Close"]
             chart_data = pd.DataFrame({"收盤價": close})
 
