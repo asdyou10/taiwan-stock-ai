@@ -370,7 +370,7 @@ if st.session_state.get("stock_queried", False):
                     st.write("失效條件：有效跌破 MA60。")
                 else:
                     st.info("決策：觀望")
-                     st.write("原因：目前技術訊號不足以支持明確操作。")
+                    st.write("原因：目前技術訊號不足以支持明確操作。")
 
             else:
                 if latest_close > ma20 and latest_close > ma60 and macd_bullish:
