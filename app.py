@@ -106,6 +106,27 @@ if st.session_state.get("stock_queried", False):
                             ["revenue_year", "revenue_month"]
                         )
                         st.dataframe(revenue_df.tail(12))
+                        # V3 基本面第1題：營收成長
+                        revenue_df["YoY"] = (
+                            revenue_df["revenue"].pct_change(12) * 100
+                        )
+
+                        valid_yoy = revenue_df["YoY"].dropna()
+
+                        st.subheader("基本面第1題：營收成長")
+
+                        if valid_yoy.empty:
+                            st.info("資料不足，無法計算營收年增率。")
+                        else:
+                            latest_yoy = valid_yoy.iloc[-1]
+                            st.write(f"最新月營收年增率：{latest_yoy:.2f}%")
+
+                            if latest_yoy > 0:
+                                st.success("初步判斷：營收年增")
+                            elif latest_yoy < 0:
+                                st.warning("初步判斷：營收年減")
+                            else:
+                                st.info("初步判斷：營收持平")
                     else:
                         st.warning("目前沒有取得月營收資料。")
 
