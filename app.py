@@ -1,8 +1,6 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
-from data_sources import get_stock_history
-
+from data_sources import get_stock_history, get_company_info, get_month_revenue
 st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
@@ -70,7 +68,7 @@ if st.session_state.get("stock_queried", False):
             # V3 基本面資料讀取測試
             with st.expander("📋 V3 基本面資料測試"):
                 try:
-                    info = yf.Ticker(matched_symbol).info
+                    info = get_company_info(matched_symbol)
                     st.write("公司名稱：", info.get("longName", "無資料"))
                     st.write("產業：", info.get("industry", "無資料"))
                     st.write("本益比：", info.get("trailingPE", "無資料"))
@@ -81,19 +79,7 @@ if st.session_state.get("stock_queried", False):
             # V3 FinMind 月營收測試
             with st.expander("📊 V3 FinMind 月營收測試"):
                 try:
-                    import requests
-
-                    response = requests.get(
-                        "https://api.finmindtrade.com/api/v4/data",
-                        params={
-                            "dataset": "TaiwanStockMonthRevenue",
-                            "data_id": stock,
-                            "start_date": "2025-01-01",
-                        },
-                        timeout=15,
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+                    result = get_month_revenue(stock)
 
                     if result.get("status") != 200:
                         st.warning(
