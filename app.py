@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from data_sources import get_stock_history, get_company_info
 from fundamental import render_revenue_analysis
+from technicals import calculate_technicals
 st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
@@ -78,14 +79,14 @@ if st.session_state.get("stock_queried", False):
                     st.warning(f"基本面資料讀取失敗：{e}")
             
             render_revenue_analysis(stock)
-            close = data["Close"]
-            chart_data = pd.DataFrame({"收盤價": close})
-
-            # 四條移動平均線
-            for days in [5, 10, 20, 60]:
-                chart_data[f"MA{days}"] = close.rolling(
-                    window=days
-                ).mean()
+            technicals = calculate_technicals(data)
+            close = technicals["close"]
+            chart_data = technicals["chart_data"]
+            rsi = technicals["rsi"]
+            dif = technicals["dif"]
+            dea = technicals["dea"]
+            histogram = technicals["histogram"]
+            macd_data = technicals["macd_data"]
 
             st.subheader(f"{stock} 股價與均線走勢")
             st.line_chart(chart_data[["收盤價", "MA20", "MA60"]])
@@ -106,24 +107,6 @@ if st.session_state.get("stock_queried", False):
                 else:
                     st.write(f"MA{days}：資料不足")
 
-            # RSI 14日，使用Wilder平滑法
-            delta = close.diff()
-            gain = delta.clip(lower=0)
-            loss = -delta.clip(upper=0)
-
-            avg_gain = gain.ewm(
-                alpha=1/14, adjust=False, min_periods=14
-            ).mean()
-            avg_loss = loss.ewm(
-                alpha=1/14, adjust=False, min_periods=14
-            ).mean()
-
-            rs = avg_gain / avg_loss.replace(0, float("nan"))
-            rsi = 100 - (100 / (1 + rs))
-            rsi = rsi.mask((avg_loss == 0) & (avg_gain > 0), 100)
-            rsi = rsi.mask((avg_gain == 0) & (avg_loss > 0), 0)
-            rsi = rsi.mask((avg_gain == 0) & (avg_loss == 0), 50)
-
             st.subheader("RSI（14日）相對強弱指標")
             st.line_chart(rsi.rename("RSI"))
             latest_rsi = rsi.iloc[-1]
@@ -138,26 +121,6 @@ if st.session_state.get("stock_queried", False):
                     st.write("RSI 位於30至70之間。")
             else:
                 st.write("RSI 資料不足。")
-
-            # MACD（12、26、9）
-            ema12 = close.ewm(
-                span=12, adjust=False
-            ).mean()
-            ema26 = close.ewm(
-                span=26, adjust=False
-            ).mean()
-
-            dif = ema12 - ema26
-            dea = dif.ewm(
-                span=9, adjust=False
-            ).mean()
-            histogram = dif - dea
-
-            macd_data = pd.DataFrame({
-                "DIF": dif,
-                "訊號線": dea,
-                "柱狀差值": histogram
-            })
 
             st.subheader("MACD 趨勢動能")
             st.line_chart(macd_data)
@@ -212,7 +175,7 @@ if st.session_state.get("stock_queried", False):
                 st.write("【MACD】DIF與訊號線接近重合。")
 
             volume = data["Volume"]
-            avg_volume20 = volume.rolling(20).mean().iloc[-1]
+            avg_volume20 = technicals["avg_volume20"]
 
             if pd.notna(avg_volume20) and avg_volume20 > 0:
                 volume_ratio = volume.iloc[-1] / avg_volume20
