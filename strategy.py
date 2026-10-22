@@ -9,6 +9,8 @@ def render_strategy_analysis(mode, holding_cost, holding_shares, chart_data, clo
     # 持股與空手雙模式分析
     st.subheader("📊 V3 雙模式技術決策")
 
+    # 收盤價由主程式傳入；在模組內建立最新收盤價，避免未定義變數。
+    latest_close = close.iloc[-1]
     ma20 = chart_data["MA20"].iloc[-1]
     ma60 = chart_data["MA60"].iloc[-1]
     macd_bullish = dif.iloc[-1] > dea.iloc[-1]
