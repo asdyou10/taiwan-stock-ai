@@ -4,6 +4,7 @@ from data_sources import get_stock_history, get_company_info
 from fundamental import render_revenue_analysis
 from strategy import render_strategy_analysis
 from technicals import calculate_technicals
+from risk import render_risk_analysis
 st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
@@ -197,54 +198,4 @@ if st.session_state.get("stock_queried", False):
                 mode, holding_cost, holding_shares, chart_data, close, dif, dea
             )
 
-            # V3 風險控管
-            st.subheader("🛡️ V3 風險控管")
-
-            risk_pct = st.slider(
-                "可承受的參考跌幅（%）",
-                min_value=1,
-                max_value=20,
-                value=8,
-                step=1
-            )
-
-            reference_price = latest_close
-            stop_price = reference_price * (1 - risk_pct / 100)
-
-            # 台股一般股票最小升降單位
-            if stop_price < 10:
-                tick = 0.01
-            elif stop_price < 50:
-                tick = 0.05
-            elif stop_price < 100:
-                tick = 0.1
-            elif stop_price < 500:
-                tick = 0.5
-            elif stop_price < 1000:
-                tick = 1
-            else:
-                tick = 5
-
-            from decimal import Decimal, ROUND_FLOOR
-
-            adjusted_stop = float(
-                (Decimal(str(stop_price)) / Decimal(str(tick)))
-                .to_integral_value(rounding=ROUND_FLOOR)
-                * Decimal(str(tick))
-            )
-            
-            st.metric(
-                "理論停損價",
-                f"{stop_price:.2f} 元"
-            )
-
-            st.metric(
-                "符合台股報價級距的參考價",
-                f"{adjusted_stop:.2f} 元"
-            )
-
-            st.caption(
-                f"以最新收盤價 {reference_price:.2f} 元為基準，"
-                f"下跌 {risk_pct}% 計算。"
-                "此為情境試算，非技術支撐位或實際停損建議。"
-            )
+            render_risk_analysis(latest_close)
