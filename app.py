@@ -1,9 +1,8 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-@st.cache_data(ttl=900, show_spinner=False)
-def get_stock_history(symbol, period):
-    return yf.Ticker(symbol).history(period=period)
+from data_sources import get_stock_history
+
 st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
