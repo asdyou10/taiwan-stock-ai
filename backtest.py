@@ -1,4 +1,4 @@
-"""V3 第六階段 V4：回測計算稽核版。
+"""V3 第六階段 V5：未調整成交價與公司行動事件版。
 
 與目前 app.py / strategy.py 完全分離，不宣稱重現 V3 完整策略。
 執行：streamlit run backtest.py
@@ -33,10 +33,13 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
     """訊號在前一交易日收盤形成，下一交易日開盤成交，避免同日收盤價偷看。"""
     if data is None or len(data) < 62:
         raise ValueError("歷史資料不足，至少需要 62 個交易日。")
-    df = data[["Open", "Close"]].copy().dropna()
+    df = data[["Open", "Close", "Adj Close", "Dividends", "Stock Splits"]].copy()
+    df = df.dropna(subset=["Open", "Close", "Adj Close"])
+    df[["Dividends", "Stock Splits"]] = df[["Dividends", "Stock Splits"]].fillna(0.0)
     df = df[(df["Open"] > 0) & (df["Close"] > 0)].copy()
-    df["MA20"] = df["Close"].rolling(20).mean()
-    df["MA60"] = df["Close"].rolling(60).mean()
+    # 訊號使用調整後收盤價，避免除權息造成虛假均線跌破；實際交易使用原始開盤價。
+    df["MA20"] = df["Adj Close"].rolling(20).mean()
+    df["MA60"] = df["Adj Close"].rolling(60).mean()
     if len(df) < 62:
         raise ValueError("有效股價資料不足，無法回測。")
 
@@ -50,6 +53,9 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
     tax_total = 0.0
     completed = []
     open_trade = None
+    dividends_total = 0.0
+    splits_seen = []
+    action_events = []
     first_trade_index = 60
     if start_date is not None:
         valid = df.index >= pd.Timestamp(start_date).tz_localize(df.index.tz) if df.index.tz is not None else df.index >= pd.Timestamp(start_date)
@@ -63,6 +69,25 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
         date = df.index[i]
         op = float(today["Open"])
         close = float(today["Close"])
+        # 除權息生效日開盤前，先依「前一交易日已持有」股數處理公司行動。
+        # 現金股利以除息日認列並視同可用現金，是近似值；實際入帳日在後。
+        split_ratio = float(today["Stock Splits"])
+        if split_ratio > 0:
+            before = shares
+            shares = shares * split_ratio
+            if open_trade is not None:
+                open_trade["股數"] = shares
+                open_trade["買進價"] = open_trade["買進總成本"] / shares if shares else 0
+            splits_seen.append(date.strftime("%Y-%m-%d"))
+            action_events.append({"日期": date.strftime("%Y-%m-%d"), "類型": "股票分割/合併", "每股數量變動倍數": split_ratio, "現金入帳": 0.0, "處理前股數": before})
+        dividend = float(today["Dividends"])
+        dividend_cash = shares * dividend if dividend > 0 else 0.0
+        if dividend_cash:
+            cash += dividend_cash
+            dividends_total += dividend_cash
+            action_events.append({"日期": date.strftime("%Y-%m-%d"), "類型": "現金股利（除息日近似認列）", "每股數量變動倍數": 1.0, "現金入帳": dividend_cash, "處理前股數": shares})
+            if open_trade is not None:
+                open_trade["累計股利"] += dividend_cash
         if strategy == "ma":
             desired_holding = bool(yesterday["MA20"] > yesterday["MA60"])
         else:
@@ -80,7 +105,7 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
                     flat_start = None
                 shares = quantity
                 open_trade = {"買進日": date.strftime("%Y-%m-%d"), "買進價": op,
-                              "股數": quantity, "買進總成本": gross + fee}
+                              "股數": quantity, "買進總成本": gross + fee, "累計股利": 0.0}
                 entries.append({"日期": date.strftime("%Y-%m-%d"), "動作": "買進", "價格": op,
                                 "股數": quantity, "手續費": fee, "證交稅": 0.0})
         elif not desired_holding and shares > 0:
@@ -95,7 +120,7 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
                             "股數": shares, "手續費": fee, "證交稅": tax})
             if open_trade is not None:
                 completed.append({**open_trade, "賣出日": date.strftime("%Y-%m-%d"),
-                                  "賣出價": op, "已實現損益": gross - fee - tax - open_trade["買進總成本"]})
+                                  "賣出價": op, "已實現損益": gross - fee - tax + open_trade["累計股利"] - open_trade["買進總成本"]})
             shares = 0
             open_trade = None
         history.append({"日期": date, "資產淨值": cash + shares * close, "持股股數": shares, "收盤價": close, "現金": cash})
@@ -112,7 +137,9 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
     return {"curve": curve, "return": total_return, "max_drawdown": max_drawdown,
             "completed": completed, "trades": entries, "win_rate": win_rate,
             "shares_at_end": shares, "final_equity": curve.iloc[-1],
-            "flat_periods": flat_periods, "fee_total": fee_total, "tax_total": tax_total, "daily": history_df}
+            "flat_periods": flat_periods, "fee_total": fee_total, "tax_total": tax_total,
+            "dividends_total": dividends_total, "action_events": action_events,
+            "splits_seen": splits_seen, "daily": history_df}
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -126,9 +153,9 @@ def load_prices(stock, start_date, end_date):
             df = yf.Ticker(symbol).history(
                 start=fetch_start.strftime("%Y-%m-%d"),
                 end=fetch_end.strftime("%Y-%m-%d"),
-                auto_adjust=True, actions=False,
+                auto_adjust=False, actions=True,
             )
-            if not df.empty:
+            if not df.empty and all(c in df.columns for c in ("Open", "Close", "Adj Close", "Dividends", "Stock Splits")):
                 return symbol, df
         except Exception:
             pass
@@ -146,7 +173,7 @@ def daily_attribution(trend, hold, initial_cash):
     return frame
 
 st.set_page_config(page_title="V3 歷史回測（獨立測試版）", layout="wide")
-st.title("📊 V3 歷史回測｜第六階段 V4 計算稽核版")
+st.title("📊 V3 歷史回測｜第六階段 V5 交易價格與公司行動版")
 st.info("此版本只比較 MA20／MA60 趨勢規則與買進持有，不代表完整 V3 策略回測。現有 APP 不受影響。")
 with st.form("backtest_inputs"):
     stock = st.text_input("台股代號", value="3491").strip()
@@ -170,7 +197,21 @@ if submitted:
                 hold = simulate(prices, capital, "hold", start_date=start_date)
             st.success(f"回測完成：{symbol}｜{len(trend['curve'])} 個交易日｜{trend['curve'].index[0].date()} 至 {trend['curve'].index[-1].date()}")
             st.caption("固定起訖日期，並使用起始日前的歷史資料暖機 MA60；實際起訖以可取得的交易日為準。")
-            st.warning("V4 使用 Yahoo Finance 自動調整後 OHLC（調整拆股及歷史股利的價格尺度），用於檢查價格序列的一致性；此模型**沒有實際發放股息、股息稅或股息再投資交易**，調整後價格的交易結果不是可實現的精確現金報酬。不能與 V3 未調整價格版直接比較績效。")
+            st.warning("V5 用 Yahoo Finance 未調整開盤價成交、未調整收盤價估值，均線訊號使用調整後收盤價；現金股利按除息日近似入帳，股票分割按事件比例變更持股。**未涵蓋股利實際發放日、稅務、股票股利零股處置或資料商未提供的公司行動**，仍不是可直接交易的精確報酬。")
+            st.subheader("🏦 公司行動事件帳（資料商提供）")
+            a1, a2, a3 = st.columns(3)
+            a1.metric("趨勢策略累計現金股利（近似）", f"{trend['dividends_total']:,.0f} 元")
+            a2.metric("買進持有累計現金股利（近似）", f"{hold['dividends_total']:,.0f} 元")
+            a3.metric("歷史公司行動事件數", len(prices[(prices['Dividends'].fillna(0) != 0) | (prices['Stock Splits'].fillna(0) != 0)]))
+            events = pd.DataFrame(trend['action_events'])
+            with st.expander("查看趨勢策略實際持有期間的股利與拆股事件"):
+                if events.empty:
+                    st.info("本策略持有期間沒有記錄到公司行動；不代表資料商一定完整。")
+                else:
+                    st.dataframe(events, hide_index=True, use_container_width=True)
+            with st.expander("查看資料商原始公司行動清單"):
+                actions = prices[(prices['Dividends'].fillna(0) != 0) | (prices['Stock Splits'].fillna(0) != 0)][['Dividends','Stock Splits']]
+                st.dataframe(actions, use_container_width=True)
             st.subheader("🧪 回測計算一致性稽核")
             audits = []
             for label, result in [("MA20／MA60", trend), ("買進持有", hold)]:
@@ -225,7 +266,7 @@ if submitted:
                 detail["報酬率（含交易成本）"] = detail["已實現損益"] / detail["買進總成本"]
                 st.markdown("**已完成交易損益（含手續費與證交稅）**")
                 st.dataframe(detail.assign(**{"報酬率（含交易成本）": detail["報酬率（含交易成本）"].map(lambda x: f"{x:.2%}")}), hide_index=True, use_container_width=True)
-                st.caption(f"已完成交易合計已實現損益：{detail['已實現損益'].sum():,.0f} 元；不含期末尚未賣出的部位。")
+                st.caption(f"已完成交易合計已實現損益（含持有期間股利）：{detail['已實現損益'].sum():,.0f} 元；不含期末尚未賣出的部位。")
             else:
                 st.info("此期間沒有已完成的趨勢策略交易。")
             if trend["flat_periods"]:
@@ -266,6 +307,6 @@ if submitted:
                 top_flat["空手期間價格變動率"] = top_flat["空手期間價格變動率"].map(lambda x: f"{x:+.2%}")
                 st.dataframe(top_flat, hide_index=True, use_container_width=True)
             st.info("此診斷顯示績效差額在何時形成；要精確拆成『進場延遲、出場過早、交易成本』的因果金額，還需要額外建立反事實策略測試，不能直接用這些數字宣稱原因已證實。")
-            st.warning("回測限制：調整後 OHLC 不等同實際可成交價，尚未建立股利現金流及公司行動事件帳；使用前日收盤訊號、次日開盤成交；假設可按開盤價成交、無滑價，按整股股數計算但未模擬零股撮合；買賣手續費 0.1425%（每筆最低 20 元），一般股票賣出稅 0.3%；未計股利、除權息現金流、融資、停牌與下市樣本，亦未納入完整 V3 基本面、持股成本或停損策略。此結果不適合作為直接買賣依據。")
+            st.warning("回測限制：使用未調整開盤價成交、收盤價估值；現金股利於除息日近似入帳，非真實入帳日，未計股利稅、二代健保補充保費；股票分割可能產生零股，未模擬零股變現或股票股利特殊處理；Yahoo Finance 公司行動資料可能缺漏。訊號為前日收盤、次日開盤成交；無滑價、漲跌停/流動性限制；手續費 0.1425%（最低 20 元）、賣出稅 0.3%。不包含完整 V3 策略，不能作為直接買賣依據。")
         except Exception as exc:
             st.error(f"回測失敗：{exc}")
