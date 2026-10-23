@@ -1,4 +1,4 @@
-"""V3 第六階段：獨立 MA20/MA60 歷史回測原型。
+"""V3 第六階段 V4：回測計算稽核版。
 
 與目前 app.py / strategy.py 完全分離，不宣稱重現 V3 完整策略。
 執行：streamlit run backtest.py
@@ -98,7 +98,7 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
                                   "賣出價": op, "已實現損益": gross - fee - tax - open_trade["買進總成本"]})
             shares = 0
             open_trade = None
-        history.append({"日期": date, "資產淨值": cash + shares * close, "持股股數": shares, "收盤價": close})
+        history.append({"日期": date, "資產淨值": cash + shares * close, "持股股數": shares, "收盤價": close, "現金": cash})
 
     if flat_start is not None:
         last_close = float(df.iloc[-1]["Close"])
@@ -126,7 +126,7 @@ def load_prices(stock, start_date, end_date):
             df = yf.Ticker(symbol).history(
                 start=fetch_start.strftime("%Y-%m-%d"),
                 end=fetch_end.strftime("%Y-%m-%d"),
-                auto_adjust=False, actions=False,
+                auto_adjust=True, actions=False,
             )
             if not df.empty:
                 return symbol, df
@@ -146,15 +146,15 @@ def daily_attribution(trend, hold, initial_cash):
     return frame
 
 st.set_page_config(page_title="V3 歷史回測（獨立測試版）", layout="wide")
-st.title("📊 V3 歷史回測｜第六階段獨立原型")
+st.title("📊 V3 歷史回測｜第六階段 V4 計算稽核版")
 st.info("此版本只比較 MA20／MA60 趨勢規則與買進持有，不代表完整 V3 策略回測。現有 APP 不受影響。")
 with st.form("backtest_inputs"):
     stock = st.text_input("台股代號", value="3491").strip()
-    default_end = date.today()
-    default_start = default_end - timedelta(days=365 * 5)
+    default_end = date(2026, 10, 1)
+    default_start = date(2021, 10, 1)
     start_date = st.date_input("回測起始日期（固定日期可重現比較）", value=default_start)
     end_date = st.date_input("回測結束日期（含當日）", value=default_end)
-    capital = st.number_input("初始資金（新台幣）", min_value=10000, value=1000000, step=100000)
+    capital = st.number_input("初始資金（新台幣）", min_value=10000, value=1000000, step=10000)
     submitted = st.form_submit_button("開始回測")
 
 if submitted:
@@ -170,6 +170,27 @@ if submitted:
                 hold = simulate(prices, capital, "hold", start_date=start_date)
             st.success(f"回測完成：{symbol}｜{len(trend['curve'])} 個交易日｜{trend['curve'].index[0].date()} 至 {trend['curve'].index[-1].date()}")
             st.caption("固定起訖日期，並使用起始日前的歷史資料暖機 MA60；實際起訖以可取得的交易日為準。")
+            st.warning("V4 使用 Yahoo Finance 自動調整後 OHLC（調整拆股及歷史股利的價格尺度），用於檢查價格序列的一致性；此模型**沒有實際發放股息、股息稅或股息再投資交易**，調整後價格的交易結果不是可實現的精確現金報酬。不能與 V3 未調整價格版直接比較績效。")
+            st.subheader("🧪 回測計算一致性稽核")
+            audits = []
+            for label, result in [("MA20／MA60", trend), ("買進持有", hold)]:
+                d = result["daily"]
+                reconstructed = d["現金"] + d["持股股數"] * d["收盤價"]
+                max_error = float((reconstructed - d["資產淨值"]).abs().max())
+                returns_error = abs((result["final_equity"] / capital - 1) - result["return"])
+                audits.append({"策略": label, "資產淨值對帳最大誤差（元）": max_error,
+                               "報酬率公式誤差": returns_error,
+                               "持股股數均非負": bool((d["持股股數"] >= 0).all()),
+                               "現金餘額均非負": bool((d["現金"] >= -1e-6).all()),
+                               "檢查通過": max_error < 0.01 and returns_error < 1e-10 and bool((d["持股股數"] >= 0).all()) and bool((d["現金"] >= -1e-6).all())})
+            st.dataframe(pd.DataFrame(audits), hide_index=True, use_container_width=True)
+            first_day = trend["curve"].index[0]
+            warmup = prices.index[prices.index < first_day]
+            st.caption(f"均線預熱：首次模擬交易日 {first_day.date()}；之前取得 {len(warmup)} 個歷史交易日（至少 60 日才足以形成前日 MA60 訊號）。")
+            if len(warmup) < 60 or not all(x["檢查通過"] for x in audits):
+                st.error("稽核未通過：請停止解讀績效，先檢查資料或計算。")
+            with st.expander("檢視每日現金、持股與資產對帳（最近 30 日）"):
+                st.dataframe(trend["daily"].tail(30), use_container_width=True)
             comparison = pd.DataFrame({
                 "MA20/MA60 趨勢策略": trend["curve"],
                 "買進持有": hold["curve"],
@@ -245,6 +266,6 @@ if submitted:
                 top_flat["空手期間價格變動率"] = top_flat["空手期間價格變動率"].map(lambda x: f"{x:+.2%}")
                 st.dataframe(top_flat, hide_index=True, use_container_width=True)
             st.info("此診斷顯示績效差額在何時形成；要精確拆成『進場延遲、出場過早、交易成本』的因果金額，還需要額外建立反事實策略測試，不能直接用這些數字宣稱原因已證實。")
-            st.warning("回測限制：使用前日收盤訊號、次日開盤成交；假設可按開盤價成交、無滑價，按整股股數計算但未模擬零股撮合；買賣手續費 0.1425%（每筆最低 20 元），一般股票賣出稅 0.3%；未計股利、除權息現金流、融資、停牌與下市樣本，亦未納入完整 V3 基本面、持股成本或停損策略。此結果不適合作為直接買賣依據。")
+            st.warning("回測限制：調整後 OHLC 不等同實際可成交價，尚未建立股利現金流及公司行動事件帳；使用前日收盤訊號、次日開盤成交；假設可按開盤價成交、無滑價，按整股股數計算但未模擬零股撮合；買賣手續費 0.1425%（每筆最低 20 元），一般股票賣出稅 0.3%；未計股利、除權息現金流、融資、停牌與下市樣本，亦未納入完整 V3 基本面、持股成本或停損策略。此結果不適合作為直接買賣依據。")
         except Exception as exc:
             st.error(f"回測失敗：{exc}")
