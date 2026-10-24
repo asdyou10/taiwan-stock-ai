@@ -8,6 +8,7 @@ from financial_crosscheck import inspect_periods
 from financial_official_source import check_official_url, source_precheck_table, OFFICIAL_PORTALS
 from financial_twse_api_probe import ENDPOINTS, probe_twse_api
 from financial_market_probe import inspect_market_sources
+from financial_eps_period_probe import inspect_official_eps_period
 
 
 def render_auto_financial_panel(stock: str):
@@ -81,6 +82,7 @@ def render_auto_financial_panel(stock: str):
     render_stage7_official_source_panel(stock)
     render_stage8_twse_probe_panel(stock)
     render_stage9_market_probe_panel(stock)
+    render_stage10_eps_period_probe_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -232,3 +234,22 @@ def render_stage9_market_probe_panel(stock: str):
             if '無法判定' in result['市場判定'] or '衝突' in result['市場判定']:
                 st.warning('目前資料不足以可靠辨識市場別；可能是連線、產業類別或資料集涵蓋範圍問題。')
         st.error('自動估值資格：禁止自動估值。仍需正式公告日期、EPS 口徑及加權平均股數的逐期核實。')
+
+
+def render_stage10_eps_period_probe_panel(stock: str):
+    """Official EPS raw-period inspection; explicitly not a period-conversion engine."""
+    with st.expander('🔎 V4.2-04 第四階段｜官方 EPS 季度與口徑核對（診斷版）', expanded=False):
+        st.info('按下按鈕查詢上市／上櫃官方一般業損益表的年度、季別及 EPS 原始值。若來源只提供最新季度，會標示歷史季度缺口；不會猜測單季 EPS。')
+        if st.button('檢查官方 EPS 季度資料', key=f'v4204_eps_period_run_{stock}'):
+            with st.spinner('正在查詢官方季度資料...'):
+                st.session_state[f'v4204_eps_period_result_{stock}'] = inspect_official_eps_period(stock)
+        result = st.session_state.get(f'v4204_eps_period_result_{stock}')
+        if result:
+            st.write('**查詢狀態：**', result['狀態'])
+            if result['紀錄']:
+                st.dataframe(pd.DataFrame(result['紀錄']), use_container_width=True, hide_index=True)
+            for error in result.get('錯誤', []):
+                st.warning('查詢失敗：' + error)
+            for notice in result['警示']:
+                st.warning(notice)
+        st.error('自動估值資格：禁止自動估值。尚未核實官方公告日期、EPS 口徑及加權平均股數。')
