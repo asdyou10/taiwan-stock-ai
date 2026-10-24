@@ -6,6 +6,7 @@ from strategy import render_strategy_analysis
 from technicals import calculate_technicals
 from risk import render_risk_analysis
 from valuation_ui import render_valuation_panel
+from financial_auto_ui import render_auto_financial_panel
 st.set_page_config(page_title="台股AI趨勢研究室", layout="wide")
 
 st.title("📈 台股AI趨勢研究室")
@@ -82,6 +83,7 @@ if st.session_state.get("stock_queried", False):
                     st.warning(f"基本面資料讀取失敗：{e}")
             
             render_revenue_analysis(stock)
+            render_auto_financial_panel(stock)
             # V4.2-02 optional research panel; does not alter V3 decisions.
             render_valuation_panel(stock, float(data["Close"].iloc[-1]))
             # 統一從技術指標模組取得數值，保留原本圖表與交易規則。
