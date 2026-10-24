@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements, review_financial_periods, audit_eps_profit_consistency
+from financial_evidence import validate_evidence, period_matches_income, KINDS
 
 
 def render_auto_financial_panel(stock: str):
@@ -68,3 +69,38 @@ def render_auto_financial_panel(stock: str):
                 st.warning(notice)
         if revenue is not None or income is not None:
             st.error('資料可信度：尚未達自動估值門檻。缺少已核實公告日期、獲利口徑與適用股數；暫不判定買進。')
+
+
+def render_stage4_evidence_panel(stock: str):
+    """Manual source-evidence intake, strictly separated from automated validation."""
+    with st.expander('📑 V4.2-03 第四階段｜財報公告佐證與時點檢查', expanded=False):
+        st.info('這裡是人工提供的公告佐證紀錄，不會自行驗證連結內容或認定官方股數。即使檢查通過，也不會解鎖自動估值。')
+        income_state = st.session_state.get(f'v4203_income_{stock}')
+        income = income_state[0] if income_state else pd.DataFrame()
+        periods = st.session_state.get(f'v4203_periods_{stock}')
+        available = periods[0]['財報截止日'].tolist() if periods is not None and not periods[0].empty else []
+        if not available:
+            st.warning('請先在上方按「讀取並檢查財務資料」，取得財報期間後再輸入佐證。')
+            return
+        with st.form(key=f'v4203_evidence_form_{stock}'):
+            period_end = st.selectbox('選擇財報截止日', available, key=f'v4203_evidence_period_{stock}')
+            release_date = st.date_input('正式公告日期（需依公告查證）', value=pd.Timestamp.now(tz='Asia/Taipei').date(), key=f'v4203_evidence_release_{stock}')
+            eps_kind = st.selectbox('EPS 口徑（依公告填寫）', KINDS, key=f'v4203_evidence_kind_{stock}')
+            shares = st.number_input('公告加權平均股數（百萬股）', min_value=0.0, value=0.0, step=1.0, key=f'v4203_evidence_shares_{stock}')
+            source_url = st.text_input('官方公告 HTTPS 連結', placeholder='https://...', key=f'v4203_evidence_url_{stock}')
+            as_of = st.date_input('分析日期（歷史時點檢查）', value=pd.Timestamp.now(tz='Asia/Taipei').date(), key=f'v4203_evidence_asof_{stock}')
+            submitted = st.form_submit_button('檢查佐證資料（不解鎖估值）')
+        if submitted:
+            result = validate_evidence(period_end, release_date.isoformat(), eps_kind, shares, source_url, as_of.isoformat())
+            if not period_matches_income(income, period_end):
+                result['問題'].append('所選財報期間與已讀取損益表不符')
+                result['格式與時點檢查'] = '未通過'
+            st.session_state[f'v4203_evidence_result_{stock}'] = result
+        result = st.session_state.get(f'v4203_evidence_result_{stock}')
+        if result:
+            st.write('**格式與時點檢查：**', result['格式與時點檢查'])
+            for problem in result['問題']:
+                st.warning(problem)
+            st.warning('來源真偽：尚未獨立核實。不得將手動輸入視為已驗證官方資料。')
+            st.error('自動估值資格：禁止自動估值（尚未完成官方來源查證及 EPS／股數口徑交叉核對）。')
+        render_stage4_evidence_panel(stock)
