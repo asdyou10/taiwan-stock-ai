@@ -7,6 +7,7 @@ from financial_gate import audit_valuation_readiness
 from financial_crosscheck import inspect_periods
 from financial_official_source import check_official_url, source_precheck_table, OFFICIAL_PORTALS
 from financial_twse_api_probe import ENDPOINTS, probe_twse_api
+from financial_market_probe import inspect_market_sources
 
 
 def render_auto_financial_panel(stock: str):
@@ -79,6 +80,7 @@ def render_auto_financial_panel(stock: str):
     render_stage6_crosscheck_panel(stock)
     render_stage7_official_source_panel(stock)
     render_stage8_twse_probe_panel(stock)
+    render_stage9_market_probe_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -206,3 +208,27 @@ def render_stage8_twse_probe_panel(stock: str):
                 st.warning('官方 API 連線或解析失敗；可稍後重試，不影響其他模組。')
             st.warning(result['限制'])
         st.error('自動估值資格：禁止自動估值。API 連線成功不等於公告日期、EPS 口徑及加權平均股數已核實。')
+
+
+def render_stage9_market_probe_panel(stock: str):
+    """Read-only official TWSE / OTC dataset comparison."""
+    with st.expander('🏛️ V4.2-04 第三版第三階段｜上市／上櫃官方財報來源辨識（診斷版）', expanded=False):
+        st.info('點擊後分別查詢上市及上櫃一般業官方損益表，依公司代號尋找候選紀錄。這不是正式市場別認證，也不會驗證歷史公告或解鎖估值。')
+        if st.button('測試上市／上櫃官方財報來源', key=f'v4204_market_run_{stock}'):
+            with st.spinner('正在查詢兩個官方資料集，請稍候...'):
+                st.session_state[f'v4204_market_result_{stock}'] = inspect_market_sources(stock)
+        result = st.session_state.get(f'v4204_market_result_{stock}')
+        if result:
+            st.write('**市場候選判定：**', result['市場判定'])
+            st.caption(result['說明'])
+            for item in result['結果']:
+                st.markdown(f"**{item['資料集']}**")
+                st.caption(f"來源：{item['來源']}")
+                st.write(f"連線：{item['連線']}｜總筆數：{item['總筆數'] if item['總筆數'] is not None else '未知'}｜符合代號筆數：{item['符合筆數']}")
+                if item['錯誤']:
+                    st.warning('官方來源查詢失敗：' + item['錯誤'])
+                if item['候選資料']:
+                    st.json(item['候選資料'])
+            if '無法判定' in result['市場判定'] or '衝突' in result['市場判定']:
+                st.warning('目前資料不足以可靠辨識市場別；可能是連線、產業類別或資料集涵蓋範圍問題。')
+        st.error('自動估值資格：禁止自動估值。仍需正式公告日期、EPS 口徑及加權平均股數的逐期核實。')
