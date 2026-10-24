@@ -5,6 +5,7 @@ from financial_auto import fetch_dataset, complete_annual_revenues, audit_income
 from financial_evidence import validate_evidence, period_matches_income, KINDS
 from financial_gate import audit_valuation_readiness
 from financial_crosscheck import inspect_periods
+from financial_official_source import check_official_url, source_precheck_table, OFFICIAL_PORTALS
 
 
 def render_auto_financial_panel(stock: str):
@@ -75,6 +76,7 @@ def render_auto_financial_panel(stock: str):
     render_stage4_evidence_panel(stock)
     render_stage5_readiness_panel(stock)
     render_stage6_crosscheck_panel(stock)
+    render_stage7_official_source_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -142,3 +144,33 @@ def render_stage6_crosscheck_panel(stock: str):
         for msg in warnings:
             st.warning(msg)
         st.error('自動估值資格：禁止自動估值；仍缺官方公告時間、EPS 口徑與正式加權平均股數的獨立驗證。')
+
+
+def render_stage7_official_source_panel(stock: str):
+    """Official-domain source precheck. Does not authenticate disclosures."""
+    with st.expander('🏛️ V4.2-04 第三版｜官方公告來源預檢（第一階段）', expanded=False):
+        st.info('本階段僅提供官方查詢入口、官方網域格式檢查及逐期缺口清單；**尚未自動取得或核實公告內容**，不會解鎖估值。')
+        st.markdown('**官方資料查詢入口**')
+        for name, url in OFFICIAL_PORTALS:
+            st.markdown(f'- [{name}]({url})')
+        st.caption('官方入口連結不代表特定股票、季度、公告日、EPS 或股數已核實。')
+        periods_state = st.session_state.get(f'v4203_periods_{stock}')
+        periods = periods_state[0] if periods_state else None
+        table = source_precheck_table(periods)
+        if table.empty:
+            st.warning('請先在 V4.2-03 按「讀取並檢查財務資料」，建立財報期間清單。')
+        else:
+            st.markdown('**待逐期查證的財報清單**')
+            st.dataframe(table, use_container_width=True, hide_index=True)
+        with st.form(key=f'v4204_official_url_form_{stock}'):
+            url = st.text_input('貼上要核對的官方財報公告網址（僅檢查網址，不會連線讀取）', key=f'v4204_official_url_{stock}', placeholder='https://mops.twse.com.tw/...')
+            submitted = st.form_submit_button('檢查官方來源網域')
+        if submitted:
+            st.session_state[f'v4204_official_url_result_{stock}'] = check_official_url(url)
+        result = st.session_state.get(f'v4204_official_url_result_{stock}')
+        if result:
+            status, explanation = result
+            st.write(f'**網址預檢：{status}**')
+            st.caption(explanation)
+        st.warning('官方網域格式符合 ≠ 官方公告內容已核實。公告日期、EPS 口徑、加權平均股數仍需逐期核對。')
+        st.error('自動估值資格：禁止自動估值（尚未建立官方公告資料自動比對）。')
