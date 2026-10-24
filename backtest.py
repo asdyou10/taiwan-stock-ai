@@ -216,6 +216,18 @@ def daily_attribution(trend, hold, initial_cash):
     frame["趨勢當日收盤持股"] = trend["daily"]["持股股數"]
     return frame
 
+@st.fragment
+
+def render_daily_audit_selector(results):
+    """切換稽核策略時只重繪此區塊，不重新執行行情下載或回測。"""
+    selected = st.selectbox(
+        "選擇稽核策略",
+        ["MA20／MA60", "買進持有", "V4 技術策略", "V4.4 資金管理"],
+        key="audit_daily_strategy",
+    )
+    st.dataframe(results[selected]["daily"].tail(30), use_container_width=True)
+
+
 st.set_page_config(page_title="V3 歷史回測（獨立測試版）", layout="wide")
 st.title("📊 V3 歷史回測｜第六階段 V5 交易價格與公司行動版")
 st.info("此版本只比較 MA20／MA60 趨勢規則與買進持有，不代表完整 V3 策略回測。現有 APP 不受影響。")
@@ -315,18 +327,12 @@ if submitted:
             if len(warmup) < 60 or not all(x["檢查通過"] for x in audits):
                 st.error("稽核未通過：請停止解讀績效，先檢查資料或計算。")
             with st.expander("檢視每日現金、持股與資產對帳（最近 30 日）"):
-                audit_daily_strategy = st.selectbox(
-                    "選擇稽核策略",
-                    ["MA20／MA60", "買進持有", "V4 技術策略", "V4.4 資金管理"],
-                    key="audit_daily_strategy",
-                )
-                audit_daily_results = {
+                render_daily_audit_selector({
                     "MA20／MA60": trend,
                     "買進持有": hold,
                     "V4 技術策略": v4_result,
                     "V4.4 資金管理": v44_managed,
-                }
-                st.dataframe(audit_daily_results[audit_daily_strategy]["daily"].tail(30), use_container_width=True)
+                })
             comparison = pd.DataFrame({
                 "MA20/MA60 趨勢策略": trend["curve"],
                 "買進持有": hold["curve"],
