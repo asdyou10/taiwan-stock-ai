@@ -4,6 +4,7 @@ import streamlit as st
 from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements, review_financial_periods, audit_eps_profit_consistency
 from financial_evidence import validate_evidence, period_matches_income, KINDS
 from financial_gate import audit_valuation_readiness
+from financial_crosscheck import inspect_periods
 
 
 def render_auto_financial_panel(stock: str):
@@ -73,6 +74,7 @@ def render_auto_financial_panel(stock: str):
 
     render_stage4_evidence_panel(stock)
     render_stage5_readiness_panel(stock)
+    render_stage6_crosscheck_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -123,3 +125,20 @@ def render_stage5_readiness_panel(stock: str):
         st.caption(f'尚待補齊／核實項目：{len(reasons)} 項；這是資料準備度診斷，不是財報真實性認證。')
         if income is None:
             st.warning('請先展開上方 V4.2-03，按「讀取並檢查財務資料」，再查看更新後的審查表。')
+
+
+def render_stage6_crosscheck_panel(stock: str):
+    """Diagnostic only: does not verify disclosures or enable valuation."""
+    with st.expander('🔍 V4.2-04 第二版｜財報期間與 EPS 交叉核對（診斷版）', expanded=False):
+        st.info('自動整理季度候選、EPS 與母公司淨利是否同時存在；目前尚未串接官方公告查證，因此不會判定 EPS 口徑、股數或解鎖估值。')
+        state = st.session_state.get(f'v4203_income_{stock}')
+        income = state[0] if state else None
+        as_of = pd.Timestamp.now(tz='Asia/Taipei').date().isoformat()
+        table, warnings = inspect_periods(income, as_of)
+        if table.empty:
+            st.warning('尚無可分析的損益表，請先在 V4.2-03 讀取財務資料。')
+        else:
+            st.dataframe(table.head(20), use_container_width=True, hide_index=True)
+        for msg in warnings:
+            st.warning(msg)
+        st.error('自動估值資格：禁止自動估值；仍缺官方公告時間、EPS 口徑與正式加權平均股數的獨立驗證。')
