@@ -9,6 +9,7 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+from decision_engine import add_indicators, evaluate
 
 COMMISSION_RATE = 0.001425  # 台股券商牌告費率；實際折扣依券商而異
 MIN_COMMISSION = 20.0      # 以一般整股交易常見最低手續費假設
@@ -42,6 +43,8 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
     df["MA60"] = df["Adj Close"].rolling(60).mean()
     if len(df) < 62:
         raise ValueError("有效股價資料不足，無法回測。")
+    # V4 專用訊號與 APP 共用同一計算函式；舊 MA 策略不受影響。
+    v4_indicators = add_indicators(df) if strategy.startswith("v4_") else None
 
     cash = float(initial_cash)
     shares = 0
@@ -90,6 +93,13 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
                 open_trade["累計股利"] += dividend_cash
         if strategy == "ma":
             desired_holding = bool(yesterday["MA20"] > yesterday["MA60"])
+        elif strategy.startswith("v4_"):
+            style = "穩健保利型" if strategy == "v4_conservative" else "趨勢續抱型"
+            signal = v4_indicators.iloc[i - 1]
+            decision = evaluate(signal["Close"], signal["MA20"], signal["MA60"],
+                                signal["DIF"], signal["DEA"], holding=shares > 0, style=style)
+            # 觀察／續抱保持原倉；只有明確賣出觀察才全數出場。
+            desired_holding = (decision.action == "買進觀察") if shares == 0 else (decision.action != "賣出觀察")
         else:
             desired_holding = True
 
@@ -182,6 +192,7 @@ with st.form("backtest_inputs"):
     start_date = st.date_input("回測起始日期（固定日期可重現比較）", value=default_start)
     end_date = st.date_input("回測結束日期（含當日）", value=default_end)
     capital = st.number_input("初始資金（新台幣）", min_value=10000, value=1000000, step=10000)
+    v4_style = st.selectbox("V4 技術回測策略", ["趨勢續抱型", "穩健保利型"])
     submitted = st.form_submit_button("開始回測")
 
 if submitted:
@@ -195,9 +206,19 @@ if submitted:
                 symbol, prices = load_prices(stock, str(start_date), str(end_date))
                 trend = simulate(prices, capital, "ma", start_date=start_date)
                 hold = simulate(prices, capital, "hold", start_date=start_date)
+                v4_code = "v4_conservative" if v4_style == "穩健保利型" else "v4_trend"
+                v4_result = simulate(prices, capital, v4_code, start_date=start_date)
             st.success(f"回測完成：{symbol}｜{len(trend['curve'])} 個交易日｜{trend['curve'].index[0].date()} 至 {trend['curve'].index[-1].date()}")
             st.caption("固定起訖日期，並使用起始日前的歷史資料暖機 MA60；實際起訖以可取得的交易日為準。")
             st.warning("V5 用 Yahoo Finance 未調整開盤價成交、未調整收盤價估值，均線訊號使用調整後收盤價；現金股利按除息日近似入帳，股票分割按事件比例變更持股。**未涵蓋股利實際發放日、稅務、股票股利零股處置或資料商未提供的公司行動**，仍不是可直接交易的精確報酬。")
+            st.subheader("🧪 V4 共用技術核心回測（研究版）")
+            st.metric("V4 技術策略總報酬率", f"{v4_result['return']:.2%}")
+            st.metric("V4 技術策略最大回撤", f"{v4_result['max_drawdown']:.2%}")
+            st.write(f"交易紀錄：{len(v4_result['trades'])} 筆")
+            st.line_chart(pd.DataFrame({"V4 技術核心": v4_result["curve"], "買進持有": hold["curve"]}))
+            with st.expander("查看 V4 交易紀錄"):
+                st.dataframe(pd.DataFrame(v4_result["trades"]), use_container_width=True)
+            st.warning("V4 回測只含技術面；訊號用前一交易日收盤、下一日開盤交易。尚未加入財報、估值與實際公告日過濾。")
             st.subheader("🏦 公司行動事件帳（資料商提供）")
             a1, a2, a3 = st.columns(3)
             a1.metric("趨勢策略累計現金股利（近似）", f"{trend['dividends_total']:,.0f} 元")

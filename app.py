@@ -3,6 +3,7 @@ import pandas as pd
 from data_sources import get_stock_history, get_company_info
 from fundamental import render_revenue_analysis
 from strategy import render_strategy_analysis
+from decision_engine import evaluate_latest
 from technicals import calculate_technicals
 from risk import render_risk_analysis
 from valuation_ui import render_valuation_panel
@@ -198,6 +199,16 @@ if st.session_state.get("stock_queried", False):
                 st.write("【成交量】資料不足，暫不判斷。")
 
             st.info("以上為規則式技術分析，並非AI預測或買賣建議。")
+
+            # V4 共用核心研究預覽；未核實基本面時不給出正式買進許可。
+            st.subheader("🎯 V4 共用決策核心｜技術面預覽")
+            v4_style = st.radio("V4 風險策略", ["趨勢續抱型", "穩健保利型"], horizontal=True, key="v4_style")
+            v4_decision = evaluate_latest(data, holding=(mode == "持股模式"), style=v4_style)
+            st.write(f"**技術訊號：{v4_decision.action}**")
+            st.write(f"原因：{v4_decision.reason}")
+            st.write(f"觸發：{v4_decision.trigger}")
+            st.write(f"失效：{v4_decision.invalidation}")
+            st.caption("V4 第一版只判斷技術面，尚未通過基本面／估值驗證，不代表可直接下單。")
 
             render_strategy_analysis(
                 mode, holding_cost, holding_shares, chart_data, close, dif, dea
