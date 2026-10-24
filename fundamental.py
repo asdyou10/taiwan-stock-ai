@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from data_sources import get_month_revenue
+from historical_data import normalize_finmind_month_revenue, audit_records
 
 
 def render_revenue_analysis(stock):
@@ -17,6 +18,13 @@ def render_revenue_analysis(stock):
                     f"FinMind 回傳訊息：{result.get('msg', result)}"
                 )
             elif result.get("data"):
+                # V4.2-01: read-only quality audit; no historical buy signals.
+                with st.expander("🧪 V4.2 歷史資料品質檢查（第一階段）"):
+                    audit = audit_records(normalize_finmind_month_revenue(result["data"], stock))
+                    st.write(f"取得月營收紀錄：{audit['total']} 筆")
+                    st.write(f"可安全用於歷史時點回測：{audit['eligible']} 筆")
+                    st.write(f"缺少可驗證公告時間：{audit['missing_publication']} 筆")
+                    st.info("FinMind 月營收資料的月份不等於實際公告時間。尚未接入可靠公告時間前，這些紀錄不得用於歷史時點選股回測；既有 V3 當期分析不受影響。")
                 revenue_df = pd.DataFrame(result["data"])
                 revenue_df = revenue_df.sort_values(
                     ["revenue_year", "revenue_month"]
