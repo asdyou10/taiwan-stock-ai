@@ -287,11 +287,19 @@ def render_stage11_history_panel(stock: str):
         summary, gaps = inspect_history_quality(table, years=5, as_of=pd.Timestamp.now(tz='Asia/Taipei').date().isoformat())
         st.markdown('**歷史資料品質摘要（僅來源完整性，不代表官方查證）**')
         st.dataframe(pd.DataFrame([summary]), use_container_width=True, hide_index=True)
-        st.markdown('**未取得季度與申報期限參考分類**')
-        if not gaps.empty:
-            st.dataframe(gaps, use_container_width=True, hide_index=True)
-        else:
+        st.markdown('**等待公告／待取得與逾期未取得季度（分開計算）**')
+        pending = gaps[gaps['分類'].str.startswith('等待公告')] if not gaps.empty else gaps
+        overdue = gaps[gaps['分類'].str.startswith('逾期未取得')] if not gaps.empty else gaps
+        if not pending.empty:
+            st.info(f'等待公告／待取得：{len(pending)} 季（不列為逾期缺漏；不代表公司尚未公告）')
+            st.dataframe(pending, use_container_width=True, hide_index=True)
+        if not overdue.empty:
+            st.warning(f'逾期未取得：{len(overdue)} 季（僅依一般申報期限初篩，需官方核對）')
+            st.dataframe(overdue, use_container_width=True, hide_index=True)
+        if gaps.empty:
             st.success('分析期間內沒有未取得的已結束季度；不代表公告日期或 EPS 口徑已核實。')
+        elif overdue.empty:
+            st.success('目前沒有逾期未取得季度；等待公告／待取得季度不計入逾期缺漏。')
         st.caption('一般申報期限為非金融業曆年制公司的概略參考，並非實際公告日；提前公告、延期、例外與公司適用規定均須另查。')
         for issue in issues:
             st.warning(issue)

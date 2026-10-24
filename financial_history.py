@@ -50,12 +50,16 @@ def inspect_history_quality(table: pd.DataFrame, years: int = 5, as_of: str | No
                 continue
             deadline = _disclosure_deadline(year,q)
             if cutoff < deadline:
-                status = '未達一般申報期限（不代表未公告）'
+                status = '等待公告／待取得（未達一般申報期限）'
             else:
-                status = '已過一般申報期限但來源未取得（需官方核對）'
+                status = '逾期未取得（需官方核對）'
             gaps.append({'缺漏季度':f'{year}Q{q}', '財報截止日':end.date().isoformat(),
                          '一般申報期限參考':deadline.date().isoformat(), '分類':status})
-    return summary, pd.DataFrame(gaps,columns=['缺漏季度','財報截止日','一般申報期限參考','分類'])
+    gap_table = pd.DataFrame(gaps,columns=['缺漏季度','財報截止日','一般申報期限參考','分類'])
+    summary['等待公告／待取得季度'] = int(gap_table['分類'].str.startswith('等待公告').sum())
+    summary['逾期未取得季度'] = int(gap_table['分類'].str.startswith('逾期未取得').sum())
+    summary['來源完整性判斷'] = '有逾期未取得季度，待核對' if summary['逾期未取得季度'] else '無逾期未取得季度（不代表官方查證通過）'
+    return summary, gap_table
 
 
 def build_quarterly_history(records: list[dict], years: int = 5, as_of: str | None = None):
