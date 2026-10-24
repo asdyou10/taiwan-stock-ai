@@ -70,6 +70,7 @@ def render_auto_financial_panel(stock: str):
         if revenue is not None or income is not None:
             st.error('資料可信度：尚未達自動估值門檻。缺少已核實公告日期、獲利口徑與適用股數；暫不判定買進。')
 
+    render_stage4_evidence_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -103,4 +104,3 @@ def render_stage4_evidence_panel(stock: str):
                 st.warning(problem)
             st.warning('來源真偽：尚未獨立核實。不得將手動輸入視為已驗證官方資料。')
             st.error('自動估值資格：禁止自動估值（尚未完成官方來源查證及 EPS／股數口徑交叉核對）。')
-        render_stage4_evidence_panel(stock)
