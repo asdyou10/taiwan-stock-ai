@@ -9,6 +9,7 @@ from financial_official_source import check_official_url, source_precheck_table,
 from financial_twse_api_probe import ENDPOINTS, probe_twse_api
 from financial_market_probe import inspect_market_sources
 from financial_eps_period_probe import inspect_official_eps_period
+from financial_history import build_quarterly_history
 
 
 def render_auto_financial_panel(stock: str):
@@ -83,6 +84,7 @@ def render_auto_financial_panel(stock: str):
     render_stage8_twse_probe_panel(stock)
     render_stage9_market_probe_panel(stock)
     render_stage10_eps_period_probe_panel(stock)
+    render_stage11_history_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -253,3 +255,34 @@ def render_stage10_eps_period_probe_panel(stock: str):
             for notice in result['警示']:
                 st.warning(notice)
         st.error('自動估值資格：禁止自動估值。尚未核實官方公告日期、EPS 口徑及加權平均股數。')
+
+
+def render_stage11_history_panel(stock: str):
+    with st.expander('📚 V4.2-04 第四階段第二版｜歷史季度財報完整性檢查', expanded=False):
+        st.caption('FinMind 歷史原始科目；不代表官方公告日期或 EPS 口徑已核實。')
+        if st.button('讀取近五年季度財報', key=f'v4204_history_{stock}'):
+            token = ''
+            try:
+                token = st.secrets.get('FINMIND_TOKEN', '')
+            except Exception:
+                pass
+            now = pd.Timestamp.now(tz='Asia/Taipei')
+            start = f'{now.year - 4}-01-01'
+            try:
+                with st.spinner('正在讀取 FinMind 歷史財報...'):
+                    records = fetch_dataset(stock, 'TaiwanStockFinancialStatements', start, token)
+                    table, issues = build_quarterly_history(records, years=5, as_of=now.date().isoformat())
+                    st.session_state[f'v4204_history_result_{stock}'] = (table, issues)
+            except Exception as exc:
+                st.session_state[f'v4204_history_result_{stock}'] = (pd.DataFrame(), [f'查詢失敗：{exc}'])
+        result = st.session_state.get(f'v4204_history_result_{stock}')
+        if result is None:
+            st.info('按下按鈕後才會查詢；不影響其他財報模組。')
+            return
+        table, issues = result
+        if not table.empty:
+            st.metric('取得季度紀錄', len(table))
+            st.dataframe(table, use_container_width=True, hide_index=True)
+        for issue in issues:
+            st.warning(issue)
+        st.error('尚未驗證正式公告日期、EPS 口徑及加權平均股數：禁止自動估值。')
