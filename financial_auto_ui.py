@@ -1,7 +1,7 @@
 """Read-only automatic financial data verification panel."""
 import pandas as pd
 import streamlit as st
-from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements
+from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements, review_financial_periods
 
 
 def render_auto_financial_panel(stock: str):
@@ -24,8 +24,10 @@ def render_auto_financial_panel(stock: str):
                     income = fetch_dataset(stock, 'TaiwanStockFinancialStatements', '2023-01-01', token)
                     audited, warnings = audit_income_statements(income)
                     st.session_state[f'v4203_income_{stock}'] = (audited, warnings)
+                    st.session_state[f'v4203_periods_{stock}'] = review_financial_periods(income)
                 except Exception as exc:
                     st.session_state[f'v4203_income_{stock}'] = (pd.DataFrame(), [f'損益表查詢失敗：{exc}'])
+                    st.session_state.pop(f'v4203_periods_{stock}', None)
         revenue = st.session_state.get(f'v4203_revenue_{stock}')
         income = st.session_state.get(f'v4203_income_{stock}')
         if revenue is not None:
@@ -44,5 +46,14 @@ def render_auto_financial_panel(stock: str):
                 st.dataframe(audited[available].head(80), use_container_width=True)
             for warning in warnings:
                 st.warning(warning)
+        periods = st.session_state.get(f'v4203_periods_{stock}')
+        if periods is not None:
+            period_table, period_issues = periods
+            st.markdown('**V4.2-03 第二階段｜財報期間與 EPS 口徑稽核**')
+            st.caption('EPS 與淨利為 FinMind 原始科目；目前不判定其為單季、累計或全年，也不推算股數。')
+            if not period_table.empty:
+                st.dataframe(period_table.head(16), use_container_width=True)
+            for issue in period_issues:
+                st.warning(issue)
         if revenue is not None or income is not None:
             st.error('資料可信度：尚未達自動估值門檻。缺少已核實公告日期、獲利口徑與適用股數；暫不判定買進。')

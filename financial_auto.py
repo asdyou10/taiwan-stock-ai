@@ -77,3 +77,39 @@ def audit_income_statements(records: list[dict]) -> tuple[pd.DataFrame, list[str
         warnings.append('部分損益表日期或金額無法解析')
     warnings.append('尚未驗證各損益表科目的定義、季報累計口徑、公告日期與股數；不自動宣稱 EPS 或合理價')
     return out.sort_values('date', ascending=False), warnings
+
+
+def review_financial_periods(records: list[dict]) -> tuple[pd.DataFrame, list[str]]:
+    """Display reported raw EPS/profit by statement date, with conservative quality flags.
+
+    FinMind statement date is the period end, not the disclosure date. Raw EPS
+    is deliberately not annualized or classified as standalone/YTD.
+    """
+    columns = ['財報截止日', 'EPS 原始值（元）', '歸屬母公司淨利原始值（元）', 'EPS 口徑', '公告日期', '估值資格']
+    df = pd.DataFrame(records)
+    if df.empty or not {'date', 'type', 'value'}.issubset(df.columns):
+        return pd.DataFrame(columns=columns), ['缺少財報日期、科目或數值，無法建立財報期間摘要']
+    df = df.copy()
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df['value'] = pd.to_numeric(df['value'], errors='coerce')
+    df = df.dropna(subset=['date', 'type', 'value'])
+    if df.empty:
+        return pd.DataFrame(columns=columns), ['沒有有效的財報科目']
+    issues = []
+    rows = []
+    for period, grp in df.groupby('date', sort=True):
+        def unique_item(key):
+            values = grp.loc[grp['type'] == key, 'value']
+            if len(values) != 1:
+                if len(values) > 1:
+                    issues.append(f'{period.date()} 的 {key} 有重複紀錄，已拒絕採用')
+                return None
+            return float(values.iloc[0])
+        eps = unique_item('EPS')
+        profit = unique_item('EquityAttributableToOwnersOfParent')
+        rows.append({'財報截止日': period.date().isoformat(), 'EPS 原始值（元）': eps,
+                     '歸屬母公司淨利原始值（元）': profit,
+                     'EPS 口徑': '未核實（單季／累計／年度）', '公告日期': '未核實',
+                     '估值資格': '禁止自動估值'})
+    issues.append('財報截止日不是公告日；EPS 口徑與股數尚未核實，不得自動推算合理價')
+    return pd.DataFrame(rows, columns=columns).sort_values('財報截止日', ascending=False).reset_index(drop=True), issues
