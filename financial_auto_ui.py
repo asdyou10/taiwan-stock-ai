@@ -9,7 +9,7 @@ from financial_official_source import check_official_url, source_precheck_table,
 from financial_twse_api_probe import ENDPOINTS, probe_twse_api
 from financial_market_probe import inspect_market_sources
 from financial_eps_period_probe import inspect_official_eps_period
-from financial_history import build_quarterly_history
+from financial_history import build_quarterly_history, inspect_history_quality
 
 
 def render_auto_financial_panel(stock: str):
@@ -283,6 +283,16 @@ def render_stage11_history_panel(stock: str):
         if not table.empty:
             st.metric('取得季度紀錄', len(table))
             st.dataframe(table, use_container_width=True, hide_index=True)
+        # Diagnostic completeness is distinct from disclosure verification.
+        summary, gaps = inspect_history_quality(table, years=5, as_of=pd.Timestamp.now(tz='Asia/Taipei').date().isoformat())
+        st.markdown('**歷史資料品質摘要（僅來源完整性，不代表官方查證）**')
+        st.dataframe(pd.DataFrame([summary]), use_container_width=True, hide_index=True)
+        st.markdown('**未取得季度與申報期限參考分類**')
+        if not gaps.empty:
+            st.dataframe(gaps, use_container_width=True, hide_index=True)
+        else:
+            st.success('分析期間內沒有未取得的已結束季度；不代表公告日期或 EPS 口徑已核實。')
+        st.caption('一般申報期限為非金融業曆年制公司的概略參考，並非實際公告日；提前公告、延期、例外與公司適用規定均須另查。')
         for issue in issues:
             st.warning(issue)
         st.error('尚未驗證正式公告日期、EPS 口徑及加權平均股數：禁止自動估值。')

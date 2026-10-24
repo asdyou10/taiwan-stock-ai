@@ -1,9 +1,62 @@
-"""Conservative historical FinMind quarterly statement index (not PIT verified)."""
+"""Conservative FinMind historical quarterly completeness checks; not point-in-time verified."""
 from __future__ import annotations
+import calendar
 import pandas as pd
 
 FIELDS = {'EPS': 'EPS 原始值（元）', 'EquityAttributableToOwnersOfParent': '母公司淨利原始值（元）'}
 COLUMNS = ['財報截止日','年度','季度',*FIELDS.values(),'資料狀態','EPS 口徑','公告日期','估值資格']
+QUARTER_ENDS = {(3,31):1,(6,30):2,(9,30):3,(12,31):4}
+
+
+def _period_end(year, quarter):
+    month = quarter * 3
+    return pd.Timestamp(year, month, calendar.monthrange(year, month)[1])
+
+
+def _disclosure_deadline(year, quarter):
+    # General Taiwan listed/OTC non-financial issuer reporting deadlines, calendar-year fiscal year.
+    # These are only heuristic dates, NOT verified filing dates or proof of a filing obligation.
+    if quarter == 1:
+        return pd.Timestamp(year, 5, 15)
+    if quarter == 2:
+        return pd.Timestamp(year, 8, 14)
+    if quarter == 3:
+        return pd.Timestamp(year, 11, 14)
+    return pd.Timestamp(year + 1, 3, 31)
+
+
+def inspect_history_quality(table: pd.DataFrame, years: int = 5, as_of: str | None = None):
+    """Return display summary and missing-period diagnostics, never asserting actual filing status."""
+    cutoff = pd.Timestamp(as_of or pd.Timestamp.now(tz='Asia/Taipei').date()).normalize()
+    first_year = cutoff.year - years + 1
+    summary = {'查詢起日':f'{first_year}-01-01','分析日期':cutoff.date().isoformat(),
+               '實得季度數':len(table), '最早季度':'無', '最新季度':'無',
+               'EPS 有值季度':0,'淨利有值季度':0,'EPS 與淨利皆有值季度':0}
+    if not table.empty:
+        ordered = table.sort_values('財報截止日')
+        summary['最早季度'] = f"{int(ordered.iloc[0]['年度'])}{ordered.iloc[0]['季度']}"
+        summary['最新季度'] = f"{int(ordered.iloc[-1]['年度'])}{ordered.iloc[-1]['季度']}"
+        eps = table[FIELDS['EPS']].notna()
+        profit = table[FIELDS['EquityAttributableToOwnersOfParent']].notna()
+        summary['EPS 有值季度'] = int(eps.sum())
+        summary['淨利有值季度'] = int(profit.sum())
+        summary['EPS 與淨利皆有值季度'] = int((eps & profit).sum())
+    present = set(zip(table['年度'].astype(int),table['季度'])) if not table.empty else set()
+    gaps = []
+    for year in range(first_year, cutoff.year + 1):
+        for q in range(1,5):
+            end = _period_end(year,q)
+            if end > cutoff or (year,f'Q{q}') in present:
+                continue
+            deadline = _disclosure_deadline(year,q)
+            if cutoff < deadline:
+                status = '未達一般申報期限（不代表未公告）'
+            else:
+                status = '已過一般申報期限但來源未取得（需官方核對）'
+            gaps.append({'缺漏季度':f'{year}Q{q}', '財報截止日':end.date().isoformat(),
+                         '一般申報期限參考':deadline.date().isoformat(), '分類':status})
+    return summary, pd.DataFrame(gaps,columns=['缺漏季度','財報截止日','一般申報期限參考','分類'])
+
 
 def build_quarterly_history(records: list[dict], years: int = 5, as_of: str | None = None):
     issues = []
@@ -15,17 +68,11 @@ def build_quarterly_history(records: list[dict], years: int = 5, as_of: str | No
     df['value'] = pd.to_numeric(df['value'], errors='coerce')
     df = df.dropna(subset=['date','type','value'])
     df = df[df['type'].isin(FIELDS)]
-    if as_of:
-        cutoff = pd.Timestamp(as_of)
-        df = df[df['date'] <= cutoff]
-        last_year = cutoff.year
-    else:
-        last_year = pd.Timestamp.today().year
-    df = df[df['date'].dt.year.between(last_year-years+1,last_year)]
-    quarter_ends = {(3,31):1,(6,30):2,(9,30):3,(12,31):4}
+    cutoff = pd.Timestamp(as_of or pd.Timestamp.now(tz='Asia/Taipei').date())
+    df = df[(df['date'] <= cutoff) & df['date'].dt.year.between(cutoff.year-years+1,cutoff.year)]
     rows = []
     for period, grp in df.groupby('date'):
-        q = quarter_ends.get((period.month,period.day))
+        q = QUARTER_ENDS.get((period.month,period.day))
         if q is None:
             issues.append(f'{period.date()}: 非標準季末，排除')
             continue
@@ -42,11 +89,10 @@ def build_quarterly_history(records: list[dict], years: int = 5, as_of: str | No
     out = pd.DataFrame(rows,columns=COLUMNS)
     if not out.empty:
         out = out.sort_values('財報截止日',ascending=False).reset_index(drop=True)
-    expected = [(y,q) for y in range(last_year-years+1,last_year+1) for q in range(1,5)
-                if pd.Timestamp(y,q*3,1)+pd.offsets.MonthEnd(0) <= pd.Timestamp(as_of or pd.Timestamp.today().date())]
-    present = set(zip(out['年度'],out['季度'])) if not out.empty else set()
-    missing_quarters = [f'{y}Q{q}' for y,q in expected if (y,f'Q{q}') not in present]
-    if missing_quarters:
-        issues.append('缺少季度紀錄（可能尚未公告或來源缺漏）：'+', '.join(missing_quarters))
+    _, gaps = inspect_history_quality(out,years=years,as_of=cutoff.date().isoformat())
+    if not gaps.empty:
+        due = int(gaps['分類'].str.startswith('已過').sum())
+        pending = len(gaps)-due
+        issues.append(f'未取得季度：{len(gaps)} 季（已過一般申報期限但來源缺漏 {due} 季；尚未達一般期限 {pending} 季）。期限僅供分類參考，非正式公告日。')
     issues.append('財報截止日不等於公告日；原始 EPS 口徑、官方股數未核實，禁止自動估值與歷史時點回測')
     return out, issues
