@@ -113,3 +113,45 @@ def review_financial_periods(records: list[dict]) -> tuple[pd.DataFrame, list[st
                      '估值資格': '禁止自動估值'})
     issues.append('財報截止日不是公告日；EPS 口徑與股數尚未核實，不得自動推算合理價')
     return pd.DataFrame(rows, columns=columns).sort_values('財報截止日', ascending=False).reset_index(drop=True), issues
+
+
+# Stage 3: diagnostics only. Financial period end dates are NOT release dates.
+def audit_eps_profit_consistency(records: list[dict]) -> tuple[pd.DataFrame, list[str]]:
+    """Check EPS/profit consistency without pretending to verify share counts.
+
+    The ratio profit / EPS is an *implied* share count, not an official
+    weighted-average share count. FinMind EPS may be cumulative or quarterly.
+    """
+    cols = ['財報截止日', 'EPS 原始值（元）', '母公司淨利原始值（元）',
+            '隱含股數（百萬股，僅供診斷）', '初步檢查', '公告日期驗證', '估值資格']
+    periods, issues = review_financial_periods(records)
+    if periods.empty:
+        return pd.DataFrame(columns=cols), issues
+    rows = []
+    for _, r in periods.iterrows():
+        eps = r['EPS 原始值（元）']
+        profit = r['歸屬母公司淨利原始值（元）']
+        implied = None
+        if eps is None or profit is None or pd.isna(eps) or pd.isna(profit):
+            status = 'EPS 或母公司淨利缺漏'
+        elif not math.isfinite(eps) or not math.isfinite(profit):
+            status = '數值不合法'
+        elif abs(eps) < 0.01:
+            status = 'EPS 接近零，無法可靠反推股數'
+        elif eps * profit < 0:
+            status = 'EPS 與淨利符號不一致，需核對口徑'
+        else:
+            implied = profit / eps / 1_000_000
+            if implied <= 0 or not math.isfinite(implied):
+                implied = None
+                status = '隱含股數無效'
+            else:
+                status = '僅供診斷；尚未核對正式加權平均股數'
+        rows.append({'財報截止日': r['財報截止日'], 'EPS 原始值（元）': eps,
+                     '母公司淨利原始值（元）': profit,
+                     '隱含股數（百萬股，僅供診斷）': round(implied, 3) if implied is not None else None,
+                     '初步檢查': status, '公告日期驗證': '未驗證（截止日不等於公告日）',
+                     '估值資格': '禁止自動估值'})
+    issues.append('隱含股數是淨利除以 EPS 的診斷值，非正式加權平均股數；不得用於估值。')
+    issues.append('未取得可核實的公開公告日期及 EPS 單季／累計口徑，禁止歷史時點回測與自動估值。')
+    return pd.DataFrame(rows, columns=cols), issues

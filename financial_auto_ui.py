@@ -1,7 +1,7 @@
 """Read-only automatic financial data verification panel."""
 import pandas as pd
 import streamlit as st
-from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements, review_financial_periods
+from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements, review_financial_periods, audit_eps_profit_consistency
 
 
 def render_auto_financial_panel(stock: str):
@@ -25,9 +25,11 @@ def render_auto_financial_panel(stock: str):
                     audited, warnings = audit_income_statements(income)
                     st.session_state[f'v4203_income_{stock}'] = (audited, warnings)
                     st.session_state[f'v4203_periods_{stock}'] = review_financial_periods(income)
+                    st.session_state[f'v4203_stage3_{stock}'] = audit_eps_profit_consistency(income)
                 except Exception as exc:
                     st.session_state[f'v4203_income_{stock}'] = (pd.DataFrame(), [f'損益表查詢失敗：{exc}'])
                     st.session_state.pop(f'v4203_periods_{stock}', None)
+                    st.session_state.pop(f'v4203_stage3_{stock}', None)
         revenue = st.session_state.get(f'v4203_revenue_{stock}')
         income = st.session_state.get(f'v4203_income_{stock}')
         if revenue is not None:
@@ -55,5 +57,14 @@ def render_auto_financial_panel(stock: str):
                 st.dataframe(period_table.head(16), use_container_width=True)
             for issue in period_issues:
                 st.warning(issue)
+        stage3 = st.session_state.get(f'v4203_stage3_{stock}')
+        if stage3 is not None:
+            checks, notices = stage3
+            st.markdown('**V4.2-03 第三階段｜EPS 與母公司淨利一致性檢查（僅供診斷）**')
+            st.caption('隱含股數 ≠ 官方加權平均股數；未核實公告日與 EPS 口徑前，仍禁止自動估值。')
+            if not checks.empty:
+                st.dataframe(checks.head(16), use_container_width=True)
+            for notice in notices:
+                st.warning(notice)
         if revenue is not None or income is not None:
             st.error('資料可信度：尚未達自動估值門檻。缺少已核實公告日期、獲利口徑與適用股數；暫不判定買進。')
