@@ -30,8 +30,10 @@ def affordable_shares(cash, price):
     return max(0, n)
 
 
-def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
+def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None, slippage_bps=0.0):
     """訊號在前一交易日收盤形成，下一交易日開盤成交，避免同日收盤價偷看。"""
+    if not 0 <= slippage_bps <= 500:
+        raise ValueError("滑價必須介於 0 至 500 bps。")
     if data is None or len(data) < 62:
         raise ValueError("歷史資料不足，至少需要 62 個交易日。")
     df = data[["Open", "Close", "Adj Close", "Dividends", "Stock Splits"]].copy()
@@ -104,33 +106,35 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
             desired_holding = True
 
         if desired_holding and shares == 0:
-            quantity = affordable_shares(cash, op)
+            execution_price = op * (1 + slippage_bps / 10000)
+            quantity = affordable_shares(cash, execution_price)
             if quantity:
-                gross = quantity * op
+                gross = quantity * execution_price
                 fee = commission(gross)
                 cash -= gross + fee
                 fee_total += fee
                 if flat_start is not None:
-                    flat_periods.append({"賣出後空手起日": flat_start["date"], "重新買進日": date.strftime("%Y-%m-%d"), "賣出價": flat_start["price"], "重新買進價": op, "空手期間價格變動率": op / flat_start["price"] - 1, "交易日數": i - flat_start["index"], "期末仍空手": False})
+                    flat_periods.append({"賣出後空手起日": flat_start["date"], "重新買進日": date.strftime("%Y-%m-%d"), "賣出價": flat_start["price"], "重新買進價": execution_price, "空手期間價格變動率": execution_price / flat_start["price"] - 1, "交易日數": i - flat_start["index"], "期末仍空手": False})
                     flat_start = None
                 shares = quantity
-                open_trade = {"買進日": date.strftime("%Y-%m-%d"), "買進價": op,
+                open_trade = {"買進日": date.strftime("%Y-%m-%d"), "買進價": execution_price,
                               "股數": quantity, "買進總成本": gross + fee, "累計股利": 0.0}
-                entries.append({"日期": date.strftime("%Y-%m-%d"), "動作": "買進", "價格": op,
+                entries.append({"日期": date.strftime("%Y-%m-%d"), "動作": "買進", "價格": execution_price,
                                 "股數": quantity, "手續費": fee, "證交稅": 0.0})
         elif not desired_holding and shares > 0:
-            gross = shares * op
+            execution_price = op * (1 - slippage_bps / 10000)
+            gross = shares * execution_price
             fee = commission(gross)
             tax = gross * SELL_TAX_RATE
             cash += gross - fee - tax
             fee_total += fee
             tax_total += tax
-            flat_start = {"date": date.strftime("%Y-%m-%d"), "price": op, "index": i}
-            entries.append({"日期": date.strftime("%Y-%m-%d"), "動作": "賣出", "價格": op,
+            flat_start = {"date": date.strftime("%Y-%m-%d"), "price": execution_price, "index": i}
+            entries.append({"日期": date.strftime("%Y-%m-%d"), "動作": "賣出", "價格": execution_price,
                             "股數": shares, "手續費": fee, "證交稅": tax})
             if open_trade is not None:
                 completed.append({**open_trade, "賣出日": date.strftime("%Y-%m-%d"),
-                                  "賣出價": op, "已實現損益": gross - fee - tax + open_trade["累計股利"] - open_trade["買進總成本"]})
+                                  "賣出價": execution_price, "已實現損益": gross - fee - tax + open_trade["累計股利"] - open_trade["買進總成本"]})
             shares = 0
             open_trade = None
         history.append({"日期": date, "資產淨值": cash + shares * close, "持股股數": shares, "收盤價": close, "現金": cash})
@@ -144,7 +148,12 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None):
     max_drawdown = (curve / pd.concat([pd.Series([initial_cash]), curve], ignore_index=True).cummax().iloc[1:].to_numpy() - 1).min()
     wins = sum(x["已實現損益"] > 0 for x in completed)
     win_rate = wins / len(completed) if completed else None
+    elapsed_days = (curve.index[-1] - curve.index[0]).total_seconds() / 86400
+    annualized = (curve.iloc[-1] / initial_cash) ** (365.25 / elapsed_days) - 1 if elapsed_days > 0 and curve.iloc[-1] > 0 else None
+    daily_returns = curve.pct_change().dropna()
+    volatility = float(daily_returns.std(ddof=1) * math.sqrt(252)) if len(daily_returns) > 1 else None
     return {"curve": curve, "return": total_return, "max_drawdown": max_drawdown,
+            "annualized_return": annualized, "annualized_volatility": volatility, "slippage_bps": slippage_bps,
             "completed": completed, "trades": entries, "win_rate": win_rate,
             "shares_at_end": shares, "final_equity": curve.iloc[-1],
             "flat_periods": flat_periods, "fee_total": fee_total, "tax_total": tax_total,
@@ -193,6 +202,7 @@ with st.form("backtest_inputs"):
     end_date = st.date_input("回測結束日期（含當日）", value=default_end)
     capital = st.number_input("初始資金（新台幣）", min_value=10000, value=1000000, step=10000)
     v4_style = st.selectbox("V4 技術回測策略", ["趨勢續抱型", "穩健保利型"])
+    slippage_bps = st.number_input("單邊滑價（bps；10 bps = 0.1%）", min_value=0.0, max_value=500.0, value=10.0, step=5.0, help="買進成交價上調、賣出成交價下調；屬情境假設，非真實成交報價。")
     submitted = st.form_submit_button("開始回測")
 
 if submitted:
@@ -204,16 +214,22 @@ if submitted:
         try:
             with st.spinner("取得資料並計算回測中..."):
                 symbol, prices = load_prices(stock, str(start_date), str(end_date))
-                trend = simulate(prices, capital, "ma", start_date=start_date)
-                hold = simulate(prices, capital, "hold", start_date=start_date)
+                trend = simulate(prices, capital, "ma", start_date=start_date, slippage_bps=slippage_bps)
+                hold = simulate(prices, capital, "hold", start_date=start_date, slippage_bps=slippage_bps)
                 v4_code = "v4_conservative" if v4_style == "穩健保利型" else "v4_trend"
-                v4_result = simulate(prices, capital, v4_code, start_date=start_date)
+                v4_result = simulate(prices, capital, v4_code, start_date=start_date, slippage_bps=slippage_bps)
             st.success(f"回測完成：{symbol}｜{len(trend['curve'])} 個交易日｜{trend['curve'].index[0].date()} 至 {trend['curve'].index[-1].date()}")
             st.caption("固定起訖日期，並使用起始日前的歷史資料暖機 MA60；實際起訖以可取得的交易日為準。")
             st.warning("V5 用 Yahoo Finance 未調整開盤價成交、未調整收盤價估值，均線訊號使用調整後收盤價；現金股利按除息日近似入帳，股票分割按事件比例變更持股。**未涵蓋股利實際發放日、稅務、股票股利零股處置或資料商未提供的公司行動**，仍不是可直接交易的精確報酬。")
             st.subheader("🧪 V4 共用技術核心回測（研究版）")
             st.metric("V4 技術策略總報酬率", f"{v4_result['return']:.2%}")
             st.metric("V4 技術策略最大回撤", f"{v4_result['max_drawdown']:.2%}")
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("年化報酬率（CAGR）", "無法計算" if v4_result["annualized_return"] is None else f'{v4_result["annualized_return"]:.2%}')
+            k2.metric("已完成交易勝率", "無已完成交易" if v4_result["win_rate"] is None else f'{v4_result["win_rate"]:.2%}')
+            k3.metric("已完成交易筆數", len(v4_result["completed"]))
+            k4.metric("累計手續費＋交易稅", f'{v4_result["fee_total"] + v4_result["tax_total"]:,.0f} 元')
+            st.caption(f'單邊滑價假設：{slippage_bps:.0f} bps；已反映於成交價和績效。年化報酬按實際回測日曆天數計算；勝率只計已平倉交易。')
             st.write(f"交易紀錄：{len(v4_result['trades'])} 筆")
             st.line_chart(pd.DataFrame({"V4 技術核心": v4_result["curve"], "買進持有": hold["curve"]}))
             with st.expander("查看 V4 交易紀錄"):
@@ -328,6 +344,6 @@ if submitted:
                 top_flat["空手期間價格變動率"] = top_flat["空手期間價格變動率"].map(lambda x: f"{x:+.2%}")
                 st.dataframe(top_flat, hide_index=True, use_container_width=True)
             st.info("此診斷顯示績效差額在何時形成；要精確拆成『進場延遲、出場過早、交易成本』的因果金額，還需要額外建立反事實策略測試，不能直接用這些數字宣稱原因已證實。")
-            st.warning("回測限制：使用未調整開盤價成交、收盤價估值；現金股利於除息日近似入帳，非真實入帳日，未計股利稅、二代健保補充保費；股票分割可能產生零股，未模擬零股變現或股票股利特殊處理；Yahoo Finance 公司行動資料可能缺漏。訊號為前日收盤、次日開盤成交；無滑價、漲跌停/流動性限制；手續費 0.1425%（最低 20 元）、賣出稅 0.3%。不包含完整 V3 策略，不能作為直接買賣依據。")
+            st.warning("回測限制：使用未調整開盤價成交、收盤價估值；現金股利於除息日近似入帳，非真實入帳日，未計股利稅、二代健保補充保費；股票分割可能產生零股，未模擬零股變現或股票股利特殊處理；Yahoo Finance 公司行動資料可能缺漏。訊號為前日收盤、次日開盤成交；已依輸入值模擬固定單邊滑價，但無漲跌停/流動性限制；手續費 0.1425%（最低 20 元）、賣出稅 0.3%。不包含完整 V3 策略，不能作為直接買賣依據。")
         except Exception as exc:
             st.error(f"回測失敗：{exc}")
