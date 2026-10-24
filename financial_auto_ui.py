@@ -6,6 +6,7 @@ from financial_evidence import validate_evidence, period_matches_income, KINDS
 from financial_gate import audit_valuation_readiness
 from financial_crosscheck import inspect_periods
 from financial_official_source import check_official_url, source_precheck_table, OFFICIAL_PORTALS
+from financial_twse_api_probe import ENDPOINTS, probe_twse_api
 
 
 def render_auto_financial_panel(stock: str):
@@ -77,6 +78,7 @@ def render_auto_financial_panel(stock: str):
     render_stage5_readiness_panel(stock)
     render_stage6_crosscheck_panel(stock)
     render_stage7_official_source_panel(stock)
+    render_stage8_twse_probe_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -174,3 +176,33 @@ def render_stage7_official_source_panel(stock: str):
             st.caption(explanation)
         st.warning('官方網域格式符合 ≠ 官方公告內容已核實。公告日期、EPS 口徑、加權平均股數仍需逐期核對。')
         st.error('自動估值資格：禁止自動估值（尚未建立官方公告資料自動比對）。')
+
+
+def render_stage8_twse_probe_panel(stock: str):
+    """User-triggered read-only official API diagnostics; no valuation unlock."""
+    with st.expander('🏛️ V4.2-04 第三版第二階段｜證交所官方 API 實測（診斷版）', expanded=False):
+        st.info('按下按鈕才會連線官方 API。只檢查可用性、欄位與股票代號候選紀錄；不會自動核實歷史公告或解鎖估值。')
+        choice = st.selectbox('官方 API 資料集', list(ENDPOINTS), key=f'v4204_twse_api_select_{stock}')
+        st.caption(f'固定官方來源：{ENDPOINTS[choice]}')
+        if st.button('測試官方 API 連線與資料欄位', key=f'v4204_twse_api_run_{stock}'):
+            with st.spinner('正在讀取官方 API（最多約 12 秒）...'):
+                st.session_state[f'v4204_twse_api_result_{stock}'] = (choice, probe_twse_api(stock, choice))
+        stored = st.session_state.get(f'v4204_twse_api_result_{stock}')
+        if stored:
+            queried_name, result = stored
+            st.write('**已測試資料集：**', queried_name)
+            st.write('**連線狀態：**', result['狀態'])
+            st.caption(result['說明'])
+            if result['狀態'] == '連線成功':
+                st.write('**API 回傳紀錄數：**', result['總紀錄數'])
+                st.write('**可見欄位名稱（最多 100 個）：**', '、'.join(result['欄位']) or '無')
+                st.write('**股票代號欄位候選：**', '、'.join(result['代號欄位候選']) or '無法自動辨識')
+                st.write('**符合代號的候選筆數：**', result['候選紀錄數'])
+                if result['候選紀錄']:
+                    st.json(result['候選紀錄'])
+                else:
+                    st.warning('未找到可辨識的股票代號候選資料；可能為欄位名稱不同、非一般業或資料期間不符。')
+            else:
+                st.warning('官方 API 連線或解析失敗；可稍後重試，不影響其他模組。')
+            st.warning(result['限制'])
+        st.error('自動估值資格：禁止自動估值。API 連線成功不等於公告日期、EPS 口徑及加權平均股數已核實。')
