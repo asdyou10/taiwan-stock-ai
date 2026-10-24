@@ -85,6 +85,7 @@ def render_auto_financial_panel(stock: str):
     render_stage9_market_probe_panel(stock)
     render_stage10_eps_period_probe_panel(stock)
     render_stage11_history_panel(stock)
+    render_stage12_dual_source_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -304,3 +305,30 @@ def render_stage11_history_panel(stock: str):
         for issue in issues:
             st.warning(issue)
         st.error('尚未驗證正式公告日期、EPS 口徑及加權平均股數：禁止自動估值。')
+
+
+def render_stage12_dual_source_panel(stock: str):
+    """Explicitly user-triggered read-only alignment, not an EPS certification."""
+    with st.expander('🔗 V4.2-04｜官方財報與 FinMind 雙來源交叉核對（第一版）', expanded=False):
+        st.info('依股票、年度及季度配對兩個來源；EPS 口徑及公告日未核實前，不宣稱數值一致，也不解鎖估值。')
+        history_state = st.session_state.get(f'v4204_history_result_{stock}')
+        history = history_state[0] if history_state else pd.DataFrame()
+        if history.empty:
+            st.warning('請先在「歷史季度財報完整性檢查」按「讀取近五年季度財報」。')
+        if st.button('執行官方／FinMind 雙來源配對', key=f'v4204_dual_run_{stock}', disabled=history.empty):
+            from financial_dual_source import crosscheck_financial_sources
+            with st.spinner('正在查詢官方資料並配對歷史季度...'):
+                try:
+                    st.session_state[f'v4204_dual_result_{stock}'] = crosscheck_financial_sources(stock, history)
+                except Exception as exc:
+                    st.session_state[f'v4204_dual_result_{stock}'] = (pd.DataFrame(), [f'查詢失敗：{type(exc).__name__}: {str(exc)[:180]}'])
+        result = st.session_state.get(f'v4204_dual_result_{stock}')
+        if result:
+            table, notices = result
+            if not table.empty:
+                st.metric('歷史季度配對檢查筆數', len(table))
+                st.metric('同季官方候選筆數', int((table['配對狀態'] == '同公司／年度／季度已配對').sum()))
+                st.dataframe(table, use_container_width=True, hide_index=True)
+            for notice in notices:
+                st.warning(notice)
+        st.error('自動估值資格：禁止自動估值。官方公告時間、EPS 期間口徑、股數及淨利單位尚未完成核實。')
