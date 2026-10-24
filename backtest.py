@@ -30,8 +30,15 @@ def affordable_shares(cash, price):
     return max(0, n)
 
 
-def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None, slippage_bps=0.0):
+def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None, slippage_bps=0.0,
+             max_position_pct=1.0, risk_per_trade_pct=None, stop_buffer_pct=0.0):
     """訊號在前一交易日收盤形成，下一交易日開盤成交，避免同日收盤價偷看。"""
+    if not 0 < max_position_pct <= 1:
+        raise ValueError("單檔投入比例須介於 0%（不含）與 100%。")
+    if risk_per_trade_pct is not None and not 0 < risk_per_trade_pct <= 0.1:
+        raise ValueError("每筆風險預算須介於 0%（不含）與 10%。")
+    if not 0 <= stop_buffer_pct <= 0.2:
+        raise ValueError("停損緩衝須介於 0% 至 20%。")
     if not 0 <= slippage_bps <= 500:
         raise ValueError("滑價必須介於 0 至 500 bps。")
     if data is None or len(data) < 62:
@@ -61,6 +68,7 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None, sli
     dividends_total = 0.0
     splits_seen = []
     action_events = []
+    sizing_events = []
     first_trade_index = 60
     if start_date is not None:
         valid = df.index >= pd.Timestamp(start_date).tz_localize(df.index.tz) if df.index.tz is not None else df.index >= pd.Timestamp(start_date)
@@ -108,6 +116,22 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None, sli
         if desired_holding and shares == 0:
             execution_price = op * (1 + slippage_bps / 10000)
             quantity = affordable_shares(cash, execution_price)
+            if strategy.startswith("v4_") and risk_per_trade_pct is not None:
+                # 用前日可見的均線估計停損參考價；不使用當日收盤資訊。
+                support_col = "MA20" if strategy == "v4_conservative" else "MA60"
+                support = float(v4_indicators.iloc[i - 1][support_col])
+                stop_reference = support * (1 - stop_buffer_pct)
+                per_share_risk = execution_price - stop_reference
+                equity_before = cash
+                max_notional = equity_before * max_position_pct
+                by_allocation = affordable_shares(min(cash, max_notional), execution_price)
+                # 風險距離無效時禁止進場，不以零距離計算無限部位。
+                by_risk = int(equity_before * risk_per_trade_pct / per_share_risk) if per_share_risk > 0 and math.isfinite(per_share_risk) else 0
+                quantity = min(quantity, by_allocation, by_risk)
+                sizing_events.append({"日期": date.strftime("%Y-%m-%d"), "前日支撐均線": support,
+                                      "參考停損價": stop_reference, "預估每股風險": per_share_risk,
+                                      "單檔上限股數": by_allocation, "風險預算股數": by_risk,
+                                      "實際買進股數": quantity, "因限制未進場": quantity == 0})
             if quantity:
                 gross = quantity * execution_price
                 fee = commission(gross)
@@ -158,7 +182,8 @@ def simulate(data, initial_cash=1_000_000.0, strategy="ma", start_date=None, sli
             "shares_at_end": shares, "final_equity": curve.iloc[-1],
             "flat_periods": flat_periods, "fee_total": fee_total, "tax_total": tax_total,
             "dividends_total": dividends_total, "action_events": action_events,
-            "splits_seen": splits_seen, "daily": history_df}
+            "splits_seen": splits_seen, "daily": history_df,
+            "sizing_events": sizing_events}
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -203,6 +228,10 @@ with st.form("backtest_inputs"):
     capital = st.number_input("初始資金（新台幣）", min_value=10000, value=1000000, step=10000)
     v4_style = st.selectbox("V4 技術回測策略", ["趨勢續抱型", "穩健保利型"])
     slippage_bps = st.number_input("單邊滑價（bps；10 bps = 0.1%）", min_value=0.0, max_value=500.0, value=10.0, step=5.0, help="買進成交價上調、賣出成交價下調；屬情境假設，非真實成交報價。")
+    st.markdown("**V4.4 資金管理情境（僅影響新增比較策略）**")
+    position_pct = st.slider("單檔最大投入比例", min_value=10, max_value=100, value=30, step=5, format="%d%%")
+    risk_pct = st.slider("每筆交易最大預估風險占資金比例", min_value=1, max_value=5, value=2, step=1, format="%d%%")
+    stop_buffer_pct = st.slider("支撐均線下方停損參考緩衝", min_value=0, max_value=10, value=2, step=1, format="%d%%")
     submitted = st.form_submit_button("開始回測")
 
 if submitted:
@@ -218,6 +247,10 @@ if submitted:
                 hold = simulate(prices, capital, "hold", start_date=start_date, slippage_bps=slippage_bps)
                 v4_code = "v4_conservative" if v4_style == "穩健保利型" else "v4_trend"
                 v4_result = simulate(prices, capital, v4_code, start_date=start_date, slippage_bps=slippage_bps)
+                v44_managed = simulate(prices, capital, v4_code, start_date=start_date,
+                                       slippage_bps=slippage_bps, max_position_pct=position_pct / 100,
+                                       risk_per_trade_pct=risk_pct / 100,
+                                       stop_buffer_pct=stop_buffer_pct / 100)
             st.success(f"回測完成：{symbol}｜{len(trend['curve'])} 個交易日｜{trend['curve'].index[0].date()} 至 {trend['curve'].index[-1].date()}")
             st.caption("固定起訖日期，並使用起始日前的歷史資料暖機 MA60；實際起訖以可取得的交易日為準。")
             st.warning("V5 用 Yahoo Finance 未調整開盤價成交、未調整收盤價估值，均線訊號使用調整後收盤價；現金股利按除息日近似入帳，股票分割按事件比例變更持股。**未涵蓋股利實際發放日、稅務、股票股利零股處置或資料商未提供的公司行動**，仍不是可直接交易的精確報酬。")
@@ -235,6 +268,20 @@ if submitted:
             with st.expander("查看 V4 交易紀錄"):
                 st.dataframe(pd.DataFrame(v4_result["trades"]), use_container_width=True)
             st.warning("V4 回測只含技術面；訊號用前一交易日收盤、下一日開盤交易。尚未加入財報、估值與實際公告日過濾。")
+            st.subheader("🛡️ V4.4 資金管理回測比較（研究版）")
+            st.caption("與原 V4 使用相同買賣訊號；只調整每次進場的買進股數。每次重新進場均依當時資產重新計算預算。")
+            st.dataframe(pd.DataFrame([
+                {"策略": "原 V4（未限制部位）", "總報酬": f"{v4_result['return']:.2%}",
+                 "最大回撤": f"{v4_result['max_drawdown']:.2%}", "期末資產（元）": round(v4_result['final_equity']),
+                 "已完成交易": len(v4_result['completed'])},
+                {"策略": "V4.4（資金管理）", "總報酬": f"{v44_managed['return']:.2%}",
+                 "最大回撤": f"{v44_managed['max_drawdown']:.2%}", "期末資產（元）": round(v44_managed['final_equity']),
+                 "已完成交易": len(v44_managed['completed'])},
+            ]), hide_index=True, use_container_width=True)
+            st.line_chart(pd.DataFrame({"原 V4": v4_result["curve"], "V4.4 資金管理": v44_managed["curve"]}))
+            with st.expander("查看 V4.4 每次進場的部位計算"):
+                st.dataframe(pd.DataFrame(v44_managed["sizing_events"]), hide_index=True, use_container_width=True)
+            st.warning("此版的停損價僅用於進場股數估算，不是保證成交的停損單；實際出場仍沿用 V4 技術決策。跳空、跌停、流動性及公司行動資料缺漏可能使實際損失超出預估風險。尚未實作組合層級的多檔部位管理。")
             st.subheader("🏦 公司行動事件帳（資料商提供）")
             a1, a2, a3 = st.columns(3)
             a1.metric("趨勢策略累計現金股利（近似）", f"{trend['dividends_total']:,.0f} 元")
@@ -251,7 +298,7 @@ if submitted:
                 st.dataframe(actions, use_container_width=True)
             st.subheader("🧪 回測計算一致性稽核")
             audits = []
-            for label, result in [("MA20／MA60", trend), ("買進持有", hold), ("V4 技術策略", v4_result)]:
+            for label, result in [("MA20／MA60", trend), ("買進持有", hold), ("V4 技術策略", v4_result), ("V4.4 資金管理", v44_managed)]:
                 d = result["daily"]
                 reconstructed = d["現金"] + d["持股股數"] * d["收盤價"]
                 max_error = float((reconstructed - d["資產淨值"]).abs().max())
@@ -270,13 +317,14 @@ if submitted:
             with st.expander("檢視每日現金、持股與資產對帳（最近 30 日）"):
                 audit_daily_strategy = st.selectbox(
                     "選擇稽核策略",
-                    ["MA20／MA60", "買進持有", "V4 技術策略"],
+                    ["MA20／MA60", "買進持有", "V4 技術策略", "V4.4 資金管理"],
                     key="audit_daily_strategy",
                 )
                 audit_daily_results = {
                     "MA20／MA60": trend,
                     "買進持有": hold,
                     "V4 技術策略": v4_result,
+                    "V4.4 資金管理": v44_managed,
                 }
                 st.dataframe(audit_daily_results[audit_daily_strategy]["daily"].tail(30), use_container_width=True)
             comparison = pd.DataFrame({
