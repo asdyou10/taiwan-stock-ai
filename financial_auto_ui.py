@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from financial_auto import fetch_dataset, complete_annual_revenues, audit_income_statements, review_financial_periods, audit_eps_profit_consistency
 from financial_evidence import validate_evidence, period_matches_income, KINDS
+from financial_gate import audit_valuation_readiness
 
 
 def render_auto_financial_panel(stock: str):
@@ -71,6 +72,7 @@ def render_auto_financial_panel(stock: str):
             st.error('資料可信度：尚未達自動估值門檻。缺少已核實公告日期、獲利口徑與適用股數；暫不判定買進。')
 
     render_stage4_evidence_panel(stock)
+    render_stage5_readiness_panel(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -104,3 +106,20 @@ def render_stage4_evidence_panel(stock: str):
                 st.warning(problem)
             st.warning('來源真偽：尚未獨立核實。不得將手動輸入視為已驗證官方資料。')
             st.error('自動估值資格：禁止自動估值（尚未完成官方來源查證及 EPS／股數口徑交叉核對）。')
+
+
+def render_stage5_readiness_panel(stock: str):
+    """V4.2-04 readiness diagnostics; never unlocks automatic valuation."""
+    with st.expander('🛡️ V4.2-04｜自動估值前置資格審查（第一版）', expanded=False):
+        st.info('本階段自動彙整資料缺口，不會自行查證公告內容，也不會解鎖自動估值。原有 V4.2-02 手動情境試算維持獨立。')
+        income_state = st.session_state.get(f'v4203_income_{stock}')
+        periods_state = st.session_state.get(f'v4203_periods_{stock}')
+        evidence = st.session_state.get(f'v4203_evidence_result_{stock}')
+        income = income_state[0] if income_state else None
+        periods = periods_state[0] if periods_state else None
+        checks, reasons = audit_valuation_readiness(income, periods, evidence)
+        st.dataframe(checks, use_container_width=True, hide_index=True)
+        st.error('自動估值資格：禁止自動估值。尚未取得可獨立核實的官方公告時點、EPS 口徑及加權平均股數。')
+        st.caption(f'尚待補齊／核實項目：{len(reasons)} 項；這是資料準備度診斷，不是財報真實性認證。')
+        if income is None:
+            st.warning('請先展開上方 V4.2-03，按「讀取並檢查財務資料」，再查看更新後的審查表。')
