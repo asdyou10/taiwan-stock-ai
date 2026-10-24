@@ -251,7 +251,7 @@ if submitted:
                 st.dataframe(actions, use_container_width=True)
             st.subheader("🧪 回測計算一致性稽核")
             audits = []
-            for label, result in [("MA20／MA60", trend), ("買進持有", hold)]:
+            for label, result in [("MA20／MA60", trend), ("買進持有", hold), ("V4 技術策略", v4_result)]:
                 d = result["daily"]
                 reconstructed = d["現金"] + d["持股股數"] * d["收盤價"]
                 max_error = float((reconstructed - d["資產淨值"]).abs().max())
@@ -268,7 +268,17 @@ if submitted:
             if len(warmup) < 60 or not all(x["檢查通過"] for x in audits):
                 st.error("稽核未通過：請停止解讀績效，先檢查資料或計算。")
             with st.expander("檢視每日現金、持股與資產對帳（最近 30 日）"):
-                st.dataframe(trend["daily"].tail(30), use_container_width=True)
+                audit_daily_strategy = st.selectbox(
+                    "選擇稽核策略",
+                    ["MA20／MA60", "買進持有", "V4 技術策略"],
+                    key="audit_daily_strategy",
+                )
+                audit_daily_results = {
+                    "MA20／MA60": trend,
+                    "買進持有": hold,
+                    "V4 技術策略": v4_result,
+                }
+                st.dataframe(audit_daily_results[audit_daily_strategy]["daily"].tail(30), use_container_width=True)
             comparison = pd.DataFrame({
                 "MA20/MA60 趨勢策略": trend["curve"],
                 "買進持有": hold["curve"],
