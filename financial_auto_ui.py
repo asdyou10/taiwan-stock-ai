@@ -14,6 +14,7 @@ from financial_history import build_quarterly_history, inspect_history_quality
 
 def render_auto_financial_panel(stock: str):
     render_historical_official_lookup(stock)
+    render_eps_auto_crosscheck(stock)
     with st.expander('🔎 V4.2-03 真實財務資料自動讀取與驗證（測試版）', expanded=False):
         st.info('本功能讀取真實資料，但尚未完成公告時間、EPS、股數及估值模型驗證。**目前不產生自動合理價或買進訊號。**')
         token = ''
@@ -355,3 +356,32 @@ def render_historical_official_lookup(stock: str):
                 st.warning(result['原因'])
             st.caption(result.get('限制', ''))
         st.error('尚未核實正式公告日期、EPS 期間口徑及加權平均股數：禁止自動估值。')
+
+
+def render_eps_auto_crosscheck(stock: str):
+    """Four-quarter EPS convention diagnostic, not verified EPS."""
+    from financial_eps_crosscheck_auto import build_eps_diagnostic
+    with st.expander('🧮 V4.2｜EPS 四季自動交叉比對（診斷候選）', expanded=False):
+        st.info('一次查詢指定年度 Q1～Q4 的官方彙總表候選 EPS，並與 FinMind EPS 原始值比較。單季差值只是假設，不能當作已驗證的 EPS。')
+        market = st.selectbox('市場別（四季比對）', ['上櫃', '上市'], key=f'eps_auto_market_{stock}')
+        year = st.number_input('西元年度（四季比對）', min_value=2013, max_value=2100, value=2024, step=1, key=f'eps_auto_year_{stock}')
+        if st.button('自動查詢四季並比對 EPS', key=f'eps_auto_run_{stock}'):
+            token = ''
+            try:
+                token = st.secrets.get('FINMIND_TOKEN', '')
+            except Exception:
+                pass
+            with st.spinner('依序查詢四季官方候選值及 FinMind EPS...'):
+                try:
+                    st.session_state[f'eps_auto_result_{stock}'] = (int(year), market, *build_eps_diagnostic(stock, year, market, token=token))
+                except Exception as exc:
+                    st.session_state[f'eps_auto_result_{stock}'] = (int(year), market, pd.DataFrame(), [f'查詢失敗：{type(exc).__name__}: {str(exc)[:160]}'])
+        result = st.session_state.get(f'eps_auto_result_{stock}')
+        if result is not None:
+            queried_year, queried_market, table, notices = result
+            st.caption(f'最近一次查詢：{queried_year} 年／{queried_market}；切換選項後需重新按查詢。')
+            if not table.empty:
+                st.dataframe(table, use_container_width=True, hide_index=True)
+            for notice in notices:
+                st.warning(notice)
+        st.error('V4.2 自動估值資格：禁止自動估值。尚未取得並核實公告日期、EPS 口徑、淨利及加權平均股數。')
