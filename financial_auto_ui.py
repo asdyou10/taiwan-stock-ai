@@ -389,6 +389,23 @@ def render_eps_auto_crosscheck(stock: str):
                 st.dataframe(audit_table, use_container_width=True, hide_index=True)
                 for audit_note in audit_notes:
                     st.info(audit_note)
+                st.markdown('**第三階段｜官方財報公告日期候選查詢（尚未驗證）**')
+                st.caption('依所選市場及年度逐季查詢官方公告頁。僅接受同一表格中有股票代號及明確公告／申報日期欄的資料；查無資料不代表沒有公告。')
+                if st.button('查詢四季公告日期候選', key=f'v42_date_probe_{stock}'):
+                    from financial_announcement_dates import lookup_announcement_candidate
+                    with st.spinner('正在查詢官方公告日期候選資料...'):
+                        probe_rows = []
+                        for q in range(1, 5):
+                            item = lookup_announcement_candidate(stock, queried_year, q, queried_market)
+                            probe_rows.append({'年度': queried_year, '季度': f'Q{q}',
+                                '公告日期候選': item['公告日期候選'], '查詢狀態': item['狀態'],
+                                '核實狀態': item['核實狀態'], '回測資格': '禁止', '估值資格': '禁止',
+                                '官方來源': item['來源']})
+                        st.session_state[f'v42_date_probe_result_{stock}'] = (queried_year, queried_market, probe_rows)
+                date_probe = st.session_state.get(f'v42_date_probe_result_{stock}')
+                if date_probe and date_probe[:2] == (queried_year, queried_market):
+                    st.dataframe(pd.DataFrame(date_probe[2]), use_container_width=True, hide_index=True)
+                st.info('公告日期候選不能取代申報原件查核；尚未核實公告類型、版本、更正紀錄及發布時點，回測與估值仍禁止使用。')
             for notice in notices:
                 st.warning(notice)
         st.error('V4.2 自動估值資格：禁止自動估值。尚未取得並核實公告日期、EPS 口徑、淨利及加權平均股數。')
