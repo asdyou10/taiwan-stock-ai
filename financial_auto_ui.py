@@ -86,6 +86,7 @@ def render_auto_financial_panel(stock: str):
     render_stage10_eps_period_probe_panel(stock)
     render_stage11_history_panel(stock)
     render_stage12_dual_source_panel(stock)
+    render_historical_official_lookup(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
@@ -332,3 +333,25 @@ def render_stage12_dual_source_panel(stock: str):
             for notice in notices:
                 st.warning(notice)
         st.error('自動估值資格：禁止自動估值。官方公告時間、EPS 期間口徑、股數及淨利單位尚未完成核實。')
+
+
+def render_historical_official_lookup(stock: str):
+    """Explicit historical MOPS read-only query; no valuation unlock."""
+    from financial_mops_history import query_historical_income
+    with st.expander('🏛️ V4.2｜官方歷史季度損益表查詢（候選資料）', expanded=False):
+        st.info('可查指定年度／季度的官方彙總表候選值；不等於財報原件、公告日期及 EPS 口徑已驗證。')
+        market = st.selectbox('市場別', ['上櫃','上市'], key=f'mops_market_{stock}')
+        year = st.number_input('西元年度', min_value=2013, max_value=2100, value=2024, step=1, key=f'mops_year_{stock}')
+        quarter = st.selectbox('季度', [1,2,3,4], key=f'mops_quarter_{stock}')
+        if st.button('查詢官方歷史損益表', key=f'mops_lookup_{stock}'):
+            with st.spinner('查詢公開資訊觀測站歷史彙總表...'):
+                st.session_state[f'mops_result_{stock}'] = query_historical_income(stock, year, quarter, market)
+        result = st.session_state.get(f'mops_result_{stock}')
+        if result:
+            st.write('查詢狀態：', result['狀態'])
+            if result.get('紀錄'):
+                st.dataframe(pd.DataFrame(result['紀錄']), use_container_width=True, hide_index=True)
+            if result.get('原因'):
+                st.warning(result['原因'])
+            st.caption(result.get('限制', ''))
+        st.error('尚未核實正式公告日期、EPS 期間口徑及加權平均股數：禁止自動估值。')

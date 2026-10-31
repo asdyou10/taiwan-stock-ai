@@ -95,7 +95,7 @@ def build_quarterly_history(records: list[dict], years: int = 5, as_of: str | No
         out = out.sort_values('財報截止日',ascending=False).reset_index(drop=True)
     _, gaps = inspect_history_quality(out,years=years,as_of=cutoff.date().isoformat())
     if not gaps.empty:
-        due = int(gaps['分類'].str.startswith('已過').sum())
+        due = int(gaps['分類'].str.startswith('逾期未取得').sum())
         pending = len(gaps)-due
         issues.append(f'未取得季度：{len(gaps)} 季（已過一般申報期限但來源缺漏 {due} 季；尚未達一般期限 {pending} 季）。期限僅供分類參考，非正式公告日。')
     issues.append('財報截止日不等於公告日；原始 EPS 口徑、官方股數未核實，禁止自動估值與歷史時點回測')
