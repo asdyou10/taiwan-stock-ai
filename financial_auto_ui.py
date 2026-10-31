@@ -382,6 +382,13 @@ def render_eps_auto_crosscheck(stock: str):
             st.caption(f'最近一次查詢：{queried_year} 年／{queried_market}；切換選項後需重新按查詢。')
             if not table.empty:
                 st.dataframe(table, use_container_width=True, hide_index=True)
+            if not table.empty:
+                from financial_evidence_audit import audit_eps_evidence
+                audit_table, audit_notes = audit_eps_evidence(table)
+                st.markdown('**第二階段｜財報證據完整性稽核（不代表官方驗證）**')
+                st.dataframe(audit_table, use_container_width=True, hide_index=True)
+                for audit_note in audit_notes:
+                    st.info(audit_note)
             for notice in notices:
                 st.warning(notice)
         st.error('V4.2 自動估值資格：禁止自動估值。尚未取得並核實公告日期、EPS 口徑、淨利及加權平均股數。')
