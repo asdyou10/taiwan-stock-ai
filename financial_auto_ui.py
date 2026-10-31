@@ -13,6 +13,7 @@ from financial_history import build_quarterly_history, inspect_history_quality
 
 
 def render_auto_financial_panel(stock: str):
+    render_historical_official_lookup(stock)
     with st.expander('🔎 V4.2-03 真實財務資料自動讀取與驗證（測試版）', expanded=False):
         st.info('本功能讀取真實資料，但尚未完成公告時間、EPS、股數及估值模型驗證。**目前不產生自動合理價或買進訊號。**')
         token = ''
@@ -86,7 +87,6 @@ def render_auto_financial_panel(stock: str):
     render_stage10_eps_period_probe_panel(stock)
     render_stage11_history_panel(stock)
     render_stage12_dual_source_panel(stock)
-    render_historical_official_lookup(stock)
 
 def render_stage4_evidence_panel(stock: str):
     """Manual source-evidence intake, strictly separated from automated validation."""
