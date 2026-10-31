@@ -68,6 +68,13 @@ def lookup_announcement_candidate(stock, year, quarter, market, fetcher=None):
             isinstance(year, int) and 2013 <= year <= 2100 and
             quarter in (1, 2, 3, 4) and market in MARKET):
         result['狀態'] = '參數錯誤'; return result
+    # t163sb01 is a financial summary table, not an authoritative filing timestamp feed.
+    # Do not silently treat an absent date column as a missing filing.
+    # Preserve injected fetcher support for offline parser tests only.
+    if fetcher is None:
+        result['狀態'] = '資料來源不適用：財報彙總表未提供可核實的申報時間；需改接財報公告紀錄'
+        result['來源限制'] = 't163sb01 僅供彙總財報查詢，不能作為歷史公告時間證據'
+        return result
     try:
         html = (fetcher or _fetch)(market, year-1911, quarter)
         parser = _HTMLTables(); parser.feed(html)
