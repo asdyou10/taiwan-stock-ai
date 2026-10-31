@@ -10,7 +10,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import re
 
-ENDPOINT = 'https://mops.twse.com.tw/mops/web/ajax_t163sb04'
+ENDPOINT = 'https://mopsov.twse.com.tw/mops/web/ajax_t163sb04'
+FALLBACK_ENDPOINT = 'https://mops.twse.com.tw/mops/web/ajax_t163sb04'
 MARKETS = {'上市': 'sii', '上櫃': 'otc'}
 
 class _Tables(HTMLParser):
@@ -23,7 +24,7 @@ class _Tables(HTMLParser):
         elif self.table is not None and tag == 'tr':
             self.row = []; self.table.append(self.row)
         elif self.row is not None and tag in ('td','th'):
-            self.cell = []; self.row.append(self.cell)
+            self.cell = []; self.row.append('')
     def handle_data(self, data):
         if self.cell is not None:
             self.cell.append(data)
@@ -35,13 +36,13 @@ class _Tables(HTMLParser):
         elif tag == 'table':
             self.table = None
 
-def _download(market, roc_year, quarter):
+def _download(market, roc_year, quarter, endpoint=ENDPOINT):
     form = {'encodeURIComponent':'1','step':'1','firstin':'1','off':'1','isQuery':'Y',
             'TYPEK':market,'year':str(roc_year),'season':f'{quarter:02d}'}
-    request = Request(ENDPOINT, data=urlencode(form).encode('ascii'), headers={
+    request = Request(endpoint, data=urlencode(form).encode('ascii'), headers={
         'User-Agent':'Mozilla/5.0 (compatible; TaiwanStockResearch/1.0)',
         'Content-Type':'application/x-www-form-urlencoded',
-        'Referer':'https://mops.twse.com.tw/mops/web/t163sb04'})
+        'Referer':endpoint.replace('ajax_t163sb04', 't163sb04')})
     with urlopen(request, timeout=15) as response:
         data = response.read(4_000_001)
         if len(data) > 4_000_000:
